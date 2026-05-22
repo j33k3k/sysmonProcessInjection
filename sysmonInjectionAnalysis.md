@@ -147,6 +147,41 @@ SeDebugPrivilege which allows a process to open handles to any process regardles
 | 5    | Injection proceeds normally                                   |
 
 
+## Available fields Sysmon vs EDR
+
+### Eid 1 Process Create
+Sysmon EID 1 fires on every `CreateProcess`. Elastic Defend generates `process` events with `event.action: start` via its kernel-mode driver (`ElasticEndpoint.sys`), capturing similar telemetry through ETW + kernel callbacks.
+
+| Sysmon field | Elastic Defend field | Comment |
+|---|---|---|
+| `ProcessGuid` | `process.entity_id` | |
+| `ProcessId` | `process.pid` | |
+| `Image` | `process.executable` | |
+| `CommandLine` | `process.command_line` | |
+| `CurrentDirectory` | `process.working_directory` | |
+| `ParentProcessGuid` | `process.parent.entity_id` | |
+| `ParentProcessId` | `process.parent.pid` | |
+| `ParentImage` | `process.parent.executable` | |
+| `ParentCommandLine` | `process.parent.command_line` | |
+| `ParentUser` | `process.parent.user.*` | Not always populated |
+| `Hashes` | `process.hash.*` | SHA256 + MD5; IMPHASH not collected by Elastic Defend |
+| `Imphash` | — | Missing — no equivalent in Elastic Defend |
+| `FileVersion` | `process.pe.file_version` | |
+| `Description` | `process.pe.description` | |
+| `Product` | `process.pe.product` | |
+| `Company` | `process.pe.company` | |
+| `OriginalFileName` | `process.pe.original_file_name` | |
+| `User` | `user.name` + `user.domain` | |
+| `LogonId` | `user.id` + `process.session_leader.*` | |
+| `LogonGuid` | — | Missing — used for WinEvent 4624 correlation in Sysmon |
+| `IntegrityLevel` | `process.token.integrity_level_name` | May be absent on older agent versions |
+| — | `process.code_signature.*` | Elastic only — no equivalent in EID 1 (Sysmon exposes this in EID 7) |
+| — | `process.Ext.ancestry` | Elastic only — full ancestry chain (entity_ids); richer than Sysmon's single parent |
+| — | `process.Ext.token.*` | Elastic only — full token: privileges, groups, elevation type |
+| — | `process.entry_leader.*` | Elastic only — session/service/interactive entry leader |
+| — | `process.thread.id` | Elastic only — spawning thread TID |
+| `UtcTime` | `@timestamp` | |
+
 ## Lab setup
 1. Windows Host running ELK in WSL with local FW rules to push traffic to the host -> WSL
 2. Windows VM with Elastic Agent, Sysmon and sysmonconfig-olaf-filedelete.xml on bridged network
