@@ -182,6 +182,8 @@ Sysmon EID 1 fires on every `CreateProcess`. Elastic Defend generates `process` 
 
 
 ### Eid 2 A process changed a file creation time 
+Sysmon EID 2 fires when a process modifies the creation timestamp of a file (timestomping). Elastic Defend captures this via file events with event.action: "change".
+
 
 ## Lab setup
 1. Windows Host running ELK in WSL with local FW rules to push traffic to the host -> WSL
