@@ -1782,4 +1782,102 @@ injection requires fewer process rights than any previous technique because memo
 - **EID 10** `UNKNOWN(00000298DA8301BC)` shellcode executing from anonymous memory.
 
 
-##
+## T10. Module Stomping
+Overwrites an already loaded legitimate DLLs memory in the target process with shellcode. Instead of allocating new anonymous RWX memory, shellcode lives inside a named legitimate module. This evades detections based on anonymous memory allocation and changes the EID 8 StartModule from "-" to a legitimate DLL name.
+| API Call                  | Layer | Sysmon Event          |
+|---------------------------|-------|-----------------------|
+| OpenProcess()             | Win32 | EID 10                |
+| VirtualAllocEx()          | Win32 | -                     |
+| WriteProcessMemory(path)  | Win32 | -                     |
+| CreateRemoteThread(LoadLibraryW) | Win32 | EID 8 (step 1) |
+| LoadLibraryW(amsi.dll)    | Win32 | EID 7                 |
+| WriteProcessMemory(shellcode) | Win32 | EID 25            |
+| CreateRemoteThread(entrypoint) | Win32 | EID 8 (step 2)   |
+
+### Sysmon Data
+1. "Process accessed:
+RuleName: -
+UtcTime: 2026-05-25 12:12:12.213
+SourceProcessGUID: {ED9BFE1B-3C9C-6A14-E303-000000001600}
+SourceProcessId: 4516
+SourceThreadId: 12696
+SourceImage: C:\Users\jens\Documents\procInj\t10_module_stomping.exe
+TargetProcessGUID: {ED9BFE1B-3C92-6A14-E203-000000001600}
+TargetProcessId: 8000
+TargetImage: C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_11.2604.5.0_x64__8wekyb3d8bbwe\Notepad\Notepad.exe
+GrantedAccess: 0x1fffff
+CallTrace: C:\WINDOWS\SYSTEM32\ntdll.dll+162164|C:\WINDOWS\System32\KERNELBASE.dll+360c6|C:\Users\jens\Documents\procInj\t10_module_stomping.exe+15f0|C:\Users\jens\Documents\procInj\t10_module_stomping.exe+10d9|C:\Users\jens\Documents\procInj\t10_module_stomping.exe+1456|C:\WINDOWS\System32\KERNEL32.DLL+2e957|C:\WINDOWS\SYSTEM32\ntdll.dll+427c
+SourceUser: WIN11\jens
+TargetUser: WIN11\jens"
+
+2. "CreateRemoteThread detected:
+RuleName: technique_id=T1055,technique_name=Process Injection
+UtcTime: 2026-05-25 12:12:12.213
+SourceProcessGuid: {ED9BFE1B-3C9C-6A14-E303-000000001600}
+SourceProcessId: 4516
+SourceImage: C:\Users\jens\Documents\procInj\t10_module_stomping.exe
+TargetProcessGuid: {ED9BFE1B-3C92-6A14-E203-000000001600}
+TargetProcessId: 8000
+TargetImage: C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_11.2604.5.0_x64__8wekyb3d8bbwe\Notepad\Notepad.exe
+NewThreadId: 1672
+StartAddress: 0x00007FF8806DF710
+StartModule: C:\WINDOWS\System32\KERNEL32.DLL
+StartFunction: LoadLibraryW
+SourceUser: WIN11\jens
+TargetUser: WIN11\jens"
+
+3. "Image loaded:
+RuleName: technique_id=T1059.001,technique_name=PowerShell
+UtcTime: 2026-05-25 12:12:12.216
+ProcessGuid: {ED9BFE1B-3C92-6A14-E203-000000001600}
+ProcessId: 8000
+Image: C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_11.2604.5.0_x64__8wekyb3d8bbwe\Notepad\Notepad.exe
+ImageLoaded: C:\Windows\System32\amsi.dll
+FileVersion: 10.0.26100.7309 (WinBuild.160101.0800)
+Description: Anti-Malware Scan Interface
+Product: Microsoft® Windows® Operating System
+Company: Microsoft Corporation
+OriginalFileName: amsi.dll
+Hashes: SHA1=4C6F8D7A04EE5A9177475708929C71863BCB3F54,MD5=C197ACDDB6CCFAFBA5E9446722403DDD,SHA256=9DF7AD9E6826AB76294A91BEF274696EE13D18A8CEBABCD5C4C352A3D1141DF3,IMPHASH=2113D3CE4C8FBF73EBAC7ABC70D78752
+Signed: true
+Signature: Microsoft Windows
+SignatureStatus: Valid
+User: WIN11\jens"
+
+4. "CreateRemoteThread detected:
+RuleName: technique_id=T1055,technique_name=Process Injection
+UtcTime: 2026-05-25 12:12:12.229
+SourceProcessGuid: {ED9BFE1B-3C9C-6A14-E303-000000001600}
+SourceProcessId: 4516
+SourceImage: C:\Users\jens\Documents\procInj\t10_module_stomping.exe
+TargetProcessGuid: {ED9BFE1B-3C92-6A14-E203-000000001600}
+TargetProcessId: 8000
+TargetImage: C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_11.2604.5.0_x64__8wekyb3d8bbwe\Notepad\Notepad.exe
+NewThreadId: 14240
+StartAddress: 0x00007FF85B2694D0
+StartModule: C:\windows\system32\amsi.dll
+StartFunction: -
+SourceUser: WIN11\jens
+TargetUser: WIN11\jens"
+
+### Sysmon Analysis
+Two EID 8 events fired, one for the LoadLibraryW step and one for the shellcode execution step. EID 7 confirmed amsi.dll loaded into
+notepad but EID 25 is absent as Sysmon did not detect the image modification. The shellcode execution thread shows StartModule: amsi.dll but with empty StartFunction: "-".
+
+| Step | Action                                    | Sysmon EID | Rule Triggered          |
+|------|-------------------------------------------|------------|-------------------------|
+| 1    | Injector opens handle to Notepad          | EID 10     | — needs rule name       |
+| 2    | amsi.dll path written to remote memory    | -          | -                       |
+| 3    | CreateRemoteThread(LoadLibraryW)          | EID 8      | T1055 Process Injection |
+| 4    | amsi.dll loaded into notepad              | EID 7      | T1059.001 PowerShell    |
+| 5    | Shellcode written to amsi.dll entry point | -          | -                       |
+| 6    | CreateRemoteThread(amsi entry point)      | EID 8      | T1055 Process Injection |
+
+### Key Indicators
+- **EID 8 step 1** `StartFunction: LoadLibraryW` DLL load step visible. Confirms amsi.dll was loaded via remote thread.
+- **EID 8 step 2** `StartModule: amsi.dll` shellcode execution thread starts from named legitimate module. Detection rules relying on StartModule: "-" miss this entirely.
+- **EID 8 step 2** `StartFunction: -` no named function at entry point because shellcode overwrote it. Named module but no function name is a stomping indicator.
+- **EID 7** `ImageLoaded: amsi.dll` `Signed: true` legitimate signed DLL loaded into notepad.
+- **EID 10** `GrantedAccess: 0x1fffff` — full access requested.
+  RuleName: - means rule match but no name — config needs update.
+- **EID 25 absent** Sysmon did not detect image modification. WriteProcessMemory to existing mapped module may not trigger PsSetCreateProcessNotifyRoutineEx in all cases.
