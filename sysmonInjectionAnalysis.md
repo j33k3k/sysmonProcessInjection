@@ -1805,8 +1805,8 @@ SourceImage: C:\Users\jens\Documents\procInj\t10_module_stomping.exe
 TargetProcessGUID: {ED9BFE1B-3C92-6A14-E203-000000001600}
 TargetProcessId: 8000
 TargetImage: C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_11.2604.5.0_x64__8wekyb3d8bbwe\Notepad\Notepad.exe
-GrantedAccess: 0x1fffff
-CallTrace: C:\WINDOWS\SYSTEM32\ntdll.dll+162164|C:\WINDOWS\System32\KERNELBASE.dll+360c6|C:\Users\jens\Documents\procInj\t10_module_stomping.exe+15f0|C:\Users\jens\Documents\procInj\t10_module_stomping.exe+10d9|C:\Users\jens\Documents\procInj\t10_module_stomping.exe+1456|C:\WINDOWS\System32\KERNEL32.DLL+2e957|C:\WINDOWS\SYSTEM32\ntdll.dll+427c
+GrantedAccess: 0x143a
+CallTrace: C:\WINDOWS\SYSTEM32\ntdll.dll+162164|C:\WINDOWS\System32\KERNELBASE.dll+360c6|C:\Users\jens\Documents\procInj\t10_module_stomping.exe+1611|C:\Users\jens\Documents\procInj\t10_module_stomping.exe+10d9|C:\Users\jens\Documents\procInj\t10_module_stomping.exe+1456|C:\WINDOWS\System32\KERNEL32.DLL+2e957|C:\WINDOWS\SYSTEM32\ntdll.dll+427c
 SourceUser: WIN11\jens
 TargetUser: WIN11\jens"
 
