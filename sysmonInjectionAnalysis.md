@@ -1881,3 +1881,13 @@ notepad but EID 25 is absent as Sysmon did not detect the image modification. Th
 - **EID 10** `GrantedAccess: 0x1fffff` — full access requested.
   RuleName: - means rule match but no name — config needs update.
 - **EID 25 absent** Sysmon did not detect image modification. WriteProcessMemory to existing mapped module may not trigger PsSetCreateProcessNotifyRoutineEx in all cases.
+
+
+## T.11 Process Doppelganging
+Process Doppelganging abuses Windows Transactional NTFS (TxF) to load a malicious process image that appears legitimate to security tools. It creates a file transaction, writes a malicious PE to a transacted file, creates a process from that transacted file, then rolls back the transaction. The malicious file never actually exists on disk, it is only visible inside the transaction. 
+
+### Sysmon Data
+`----`
+### Sysmon Analysis
+NtCreateProcessEx returns 0xC00000BB (STATUS_NOT_SUPPORTED) on Windows 11. Microsoft patched the TxF-based process creation path that doppelganging relies on. The technique is effectively dead on modern Windows builds.
+<img width="562" height="211" alt="image" src="https://github.com/user-attachments/assets/f0cf3c78-2836-40a4-a119-7b2de0228d60" />
