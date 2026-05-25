@@ -1891,3 +1891,110 @@ Process Doppelganging abuses Windows Transactional NTFS (TxF) to load a maliciou
 ### Sysmon Analysis
 NtCreateProcessEx returns 0xC00000BB (STATUS_NOT_SUPPORTED) on Windows 11. Microsoft patched the TxF-based process creation path that doppelganging relies on. The technique is effectively dead on modern Windows builds.
 <img width="562" height="211" alt="image" src="https://github.com/user-attachments/assets/f0cf3c78-2836-40a4-a119-7b2de0228d60" />
+
+
+## T.12 SetWindowsHookEx
+Installs a Windows message hook that causes the OS to automatically load a DLL into any process that handles the hooked message type. No CreateRemoteThread called, instead Windows itself performs the injection when a hooked event fires. The DLL is loaded into every process receiving the hooked message.
+| API Call              | Layer | Sysmon Event              |
+|-----------------------|-------|---------------------------|
+| LoadLibraryA()        | Win32 | EID 7 (local load)        |
+| SetWindowsHookEx()    | Win32 | -                         |
+| Windows message loop  | OS    | EID 7 (remote processes)  |
+| spotlessExport()      | DLL   | - (callback)              |
+| VirtualAlloc()        | Win32 | -                         |
+
+### Sysmon Data
+1. "Image loaded:
+RuleName: technique_id=T1574.002,technique_name=DLL Side-Loading
+UtcTime: 2026-05-25 14:15:45.667
+ProcessGuid: {ED9BFE1B-5991-6A14-7505-000000001600}
+ProcessId: 9724
+Image: C:\Users\jens\Documents\procInj\t12_setwindowshookex.exe
+ImageLoaded: C:\Users\jens\Documents\procInj\t12_dllhook.dll
+FileVersion: -
+Description: -
+Product: -
+Company: -
+OriginalFileName: -
+Hashes: SHA1=9915575BD7CBA9BC1A47A55ACF19B229C805D7C7,MD5=DB809B9DE01DD19B447F9EC8C32EC177,SHA256=3926442C83C96B1FC11FDAA7032D3F60E4E83A2B6D91B3912AA7F604CE9C9AD6,IMPHASH=EF1DA18B1960BF7711AECD9BD3344EC5
+Signed: false
+Signature: -
+SignatureStatus: Unavailable
+User: WIN11\jens"
+
+2. "Image loaded:
+RuleName: technique_id=T1574.002,technique_name=DLL Side-Loading
+UtcTime: 2026-05-25 14:15:45.747
+ProcessGuid: {ED9BFE1B-5920-6A14-6A05-000000001600}
+ProcessId: 9804
+Image: C:\Program Files\WindowsApps\Microsoft.WindowsTerminal_1.24.11321.0_x64__8wekyb3d8bbwe\WindowsTerminal.exe
+ImageLoaded: C:\Users\jens\Documents\procInj\t12_dllhook.dll
+FileVersion: -
+Description: -
+Product: -
+Company: -
+OriginalFileName: -
+Hashes: SHA1=9915575BD7CBA9BC1A47A55ACF19B229C805D7C7,MD5=DB809B9DE01DD19B447F9EC8C32EC177,SHA256=3926442C83C96B1FC11FDAA7032D3F60E4E83A2B6D91B3912AA7F604CE9C9AD6,IMPHASH=EF1DA18B1960BF7711AECD9BD3344EC5
+Signed: false
+Signature: -
+SignatureStatus: Unavailable
+User: WIN11\jens"
+
+3. "Process Create:
+RuleName: technique_id=T1059.003,technique_name=Windows Command Shell
+UtcTime: 2026-05-25 14:15:45.767
+ProcessGuid: {ED9BFE1B-5991-6A14-7605-000000001600}
+ProcessId: 1456
+Image: C:\Windows\System32\cmd.exe
+FileVersion: 10.0.26100.8328 (WinBuild.160101.0800)
+Description: Windows Command Processor
+Product: Microsoft® Windows® Operating System
+Company: Microsoft Corporation
+OriginalFileName: Cmd.Exe
+CommandLine: cmd
+CurrentDirectory: C:\WINDOWS\system32\
+User: WIN11\jens
+LogonGuid: {ED9BFE1B-066F-6A14-3A1C-070000000000}
+LogonId: 0x71c3a
+TerminalSessionId: 1
+IntegrityLevel: Medium
+Hashes: SHA1=8EFFECCD068002141AEF22B095A52E1D41656C98,MD5=CED4AA0B4CBF72E2520E0A2CCFF79370,SHA256=D5697FEF6995E992B9232A2B19665A297743427316C7225A5B772F0032F20FCA,IMPHASH=B0F049C014592B156EB1FA857E99CEB9
+ParentProcessGuid: {ED9BFE1B-5920-6A14-6A05-000000001600}
+ParentProcessId: 9804
+ParentImage: C:\Program Files\WindowsApps\Microsoft.WindowsTerminal_1.24.11321.0_x64__8wekyb3d8bbwe\WindowsTerminal.exe
+ParentCommandLine: ""C:\Program Files\WindowsApps\Microsoft.WindowsTerminal_1.24.11321.0_x64__8wekyb3d8bbwe\WindowsTerminal.exe"" -Embedding
+ParentUser: WIN11\jens"
+
+4. "Network connection detected:
+RuleName: technique_id=T1571,technique_name=Non-Standard Port
+UtcTime: 2026-05-25 14:15:44.451
+ProcessGuid: {ED9BFE1B-5920-6A14-6A05-000000001600}
+ProcessId: 9804
+Image: C:\Program Files\WindowsApps\Microsoft.WindowsTerminal_1.24.11321.0_x64__8wekyb3d8bbwe\WindowsTerminal.exe
+User: WIN11\jens
+Protocol: tcp
+Initiated: true
+SourceIsIpv6: false
+SourceIp: 192.168.32.13
+SourceHostname: -
+SourcePort: 51337
+SourcePortName: -
+DestinationIsIpv6: false
+DestinationIp: 192.168.32.49
+DestinationHostname: -
+DestinationPort: 4444
+DestinationPortName: -"
+
+### Sysmon Analysis
+EID 8 is completely absent as SetWindowsHookEx does not create a remote thread instead Windows message dispatcher loads the DLL automatically. Also EID 10 is absent because SetWindowsHookEx does not call OpenProcess at any point. EID 7 fired in two processes simultaneously, the injector itself and WindowsTerminal.exe. The hook injected into WindowsTerminal because it was the active keyboard focus process when the key was pressed, not notepad. It was also confired with cmd.exe crashing.
+| Step | Action                                    | Sysmon EID | Rule Triggered          |
+|------|-------------------------------------------|------------|-------------------------|
+| 1    | LoadLibrary loads DLL locally             | EID 7      | T1574.002 DLL Side-Load |
+| 2    | SetWindowsHookEx installs system-wide hook| -          | -                       |
+| 3    | Key pressed — Windows loads DLL into target| EID 7     | T1574.002 DLL Side-Load |
+| 4    | DLL callback executes shellcode           | -          | -                       |
+| 5    | WindowsTerminal spawns cmd.exe            | EID 1      | T1059.003 Cmd Shell     |
+
+### Key Indicators
+- **EID 8/10 absent** which confirmed gap, Windows message dispatcher performs the load internally.
+- **EID 7** `ImageLoaded: t12_dllhook.dll` in MULTIPLE processes same DLL hash appearing across different processes simultaneously is the key detection indicator for hook injection.
