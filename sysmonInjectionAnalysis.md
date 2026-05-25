@@ -160,6 +160,10 @@ On Kali run:
 - nc -lvnp 4444
 
 
+## Sysmon conf updates
+- In EiD 10 exclude source image is "C:\Program Files\Elastic\Endpoint\elastic-endpoint.exe" and contains "elastic-otel-collector.exe"
+
+
 Then common header used for each exploit
 ```
 #pragma once
@@ -1776,3 +1780,6 @@ injection requires fewer process rights than any previous technique because memo
   No PROCESS_VM_WRITE (0x0020) confirms WriteProcessMemory absent.
   Forensic signature of section-based injection.
 - **EID 10** `UNKNOWN(00000298DA8301BC)` shellcode executing from anonymous memory.
+
+
+##
