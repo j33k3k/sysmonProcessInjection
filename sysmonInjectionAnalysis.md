@@ -1998,3 +1998,6 @@ EID 8 is completely absent as SetWindowsHookEx does not create a remote thread i
 ### Key Indicators
 - **EID 8/10 absent** which confirmed gap, Windows message dispatcher performs the load internally.
 - **EID 7** `ImageLoaded: t12_dllhook.dll` in MULTIPLE processes same DLL hash appearing across different processes simultaneously is the key detection indicator for hook injection.
+
+
+## T13. AddressOfEntryPoint without VirtualAllocEx RWX
