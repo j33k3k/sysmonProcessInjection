@@ -28,19 +28,19 @@ at the lowest possible level below any userland bypass. The Sysmon service then 
 
 | Technique                  | Observed Value | Comment                                              |
 |----------------------------|----------------|------------------------------------------------------|
-| T1  Classic CRT            | 0x1fffff (0x143a possible)       | Win32 promotes same-user same-session to full access |
-| T2  NtCreateThreadEx       | 0x1fffff (0x143a possible)       | Same Win32 promotion as T1                           |
-| T3  APC Early Bird         | 0x1fffff (0x143a possible)       | CreateProcess child handle grants full access        |
-| T4  Process Hollowing      | 0x1fffff (0x143a possible)       | CreateProcess child handle grants full access        |
-| T5  Direct Syscall         | 0x142a         | Kernel enforces exact rights, no Win32 promotion    |
+| T1  Classic CRT            | 0x1fffff       | Minimal value 0x143a possible                        |
+| T2  NtCreateThreadEx       | 0x1fffff       | Minimal value 0x143a possible                        |
+| T3  APC Early Bird         | 0x1fffff       | Minimal value 0x143a possible                        |
+| T4  Process Hollowing      | 0x1fffff       | Minimal value 0x143a possible                        |
+| T5  Direct Syscall         | 0x142a         | Kernel enforces exact rights, no Win32 promotion     |
 | T6  DLL Injection          | 0x102a         | Kernel substitutes QUERY_INFO for QUERY_LIMITED      |
-| T7  Reflective DLL (recon) | 0x1410         | Metasploit recon handle, VM_READ+QUERY_LTD only     |
-| T7  Reflective DLL (inject)| 0x3fff         | Metasploit injection handle, near full access       |
-| T8  Thread Hijacking       | 0x1428         | CREATE_THREAD (0x0002) absent, no thread created    |
-| T9  NtCreateSection        | 0x140a         | VM_WRITE (0x0020) absent, section mapping used      |
+| T7  Reflective DLL (recon) | 0x1410         | Metasploit recon handle, VM_READ+QUERY_LTD only      |
+| T7  Reflective DLL (inject)| 0x3fff         | Metasploit injection handle, near full access        |
+| T8  Thread Hijacking       | 0x1428         | CREATE_THREAD (0x0002) absent, no thread created     | 
+| T9  NtCreateSection        | 0x140a         | VM_WRITE (0x0020) absent, section mapping used       |
 | T10 Module Stomping        | 0x143a         | Standard minimal injection rights                    |
 | T11 Doppelganging          | -              | Failed lab attempt                                   |
-| T12 SetWindowsHookEx       | -              | No OpenProcess, Windows dispatcher injects          |
+| T12 SetWindowsHookEx       | -              | No OpenProcess, Windows dispatcher injects           |
 | T13 AOE Injection          | 0x143a         | Standard minimal injection rights                    |                                          |
 | T14 PE Injection           | 0x1fffff       | MAXIMUM_ALLOWED resolves to full access same user    |
 
