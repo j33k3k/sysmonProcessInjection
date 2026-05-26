@@ -5,7 +5,7 @@ This lab documents Sysmon detection coverage across a broad spectrum of Windows 
 perspective. The goal is to understand what Sysmon sees, what it misses, and how to tune detection rules to cover each technique. 
 
 **Disclaimer:** The findings and conclusions in this document are based entirely on testing performed in my own isolated lab environment. All results reflect the specific configuration of my lab setup including the Windows 11 build version, Sysmon schema version, Elastic stack version, and custom Sysmon config at the time of testing. Results may differ on other builds, configurations or environments. Furthermore, my knowledge of offensive security and Windows process injection techniques is limited.
-The implementations used are based on the process injection techniques documented at [Red Team Notes (ired.team)](https://www.ired.team/offensive-security/code-injection-process-injection) and vibe coded with Claude. 
+The implementations used are based on the process injection techniques documented at [Red Team Notes (ired.team)](https://www.ired.team/offensive-security/code-injection-process-injection) and vibe coded with Claude Sonnet 4.6. 
 
 
 ---
