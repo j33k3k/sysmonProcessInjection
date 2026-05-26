@@ -89,8 +89,6 @@ Process created or image modified
 → Sysmon reads original file from disk
 → if mismatch: logs EID 25 Type: Image is replaced
 
-<img width="942" height="712" alt="image" src="https://github.com/user-attachments/assets/65977293-a5d1-43cc-8dab-a8c0f33aa17d" />
-
 ## Process Access Rights Overview
 
 | Value    | Breakdown                                                | Technique / Context                         |
