@@ -155,3 +155,17 @@ Stop-Process -Name "Notepad" -Force
 
 ### Analysis
 EID 5 is Sysmon's leanest event only four fields (timestamp, GUID, PID, image, user). EDR's termination event is richer because it carries the full process context snapshot at exit time. Field `process.exit_code` enables detecting abnormal terminations (non zero exits from normally clean processes can indicate crashes caused by injection) and `process.parent.thread.Ext.call_stack_contains_unbacked: true` on the parent process is an injection indicator.
+
+
+## EID 6 Driver Loaded
+EID 6 fires when a kernel driver is loaded, hooking PsSetLoadImageNotifyRoutine at the kernel level. This could indicate BYOVD attacks, rootkits, and EDR tampering. Elastic Defend captures driver loads via its kernel driver through the same ETW image load notification callback, generating events in endpoint.events.library.
+
+### Event Generation
+```
+sc.exe create CustomDriver binPath= "C:\Temp\customdriver.sys" type= kernel start= demand
+sc.exe start CustomDriver
+sc.exe stop CustomDriver
+sc.exe delete CustomDriver
+```
+
+### Field Comparision
