@@ -14,7 +14,7 @@ The implementations used are based on the process injection techniques documente
 
 | Component       | Details                                          |
 |-----------------|--------------------------------------------------|
-| Target VM       | Windows 11 Sysmon + Elastic Agent             |
+| Target VM       | Windows 11 Sysmon + Elastic Agent v9.4.0             |
 | Attacker VM     | Kali Linux                                       |
 | Detection Stack | Elasticsearch + Kibana + Elastic Fleet           |
 | Sysmon Config   | Olaf Hartong modular config custom tuned       |
