@@ -25,23 +25,22 @@ The implementations used are based on the process injection techniques documente
 ---
 
 ## Techniques Tested
-
-| #   | Technique                           | Target      | EID 8 | EID 10 | EID 7 | EID 25 |
-|-----|-------------------------------------|-------------|-------|--------|-------|--------|
-| T1  | Classic CreateRemoteThread          | notepad.exe | ✅    | ✅     | ❌    | ❌     |
-| T2  | NtCreateThreadEx                    | notepad.exe | ✅    | ✅     | ❌    | ❌     |
-| T3  | APC Early Bird                      | notepad.exe | ❌    | ✅     | ❌    | ❌     |
-| T4  | Process Hollowing                   | notepad.exe | ❌    | ✅     | ❌    | ✅     |
-| T5  | Direct Syscall                      | notepad.exe | ✅    | ✅     | ❌    | ❌     |
-| T6  | DLL Injection via LoadLibraryA      | notepad.exe | ✅    | ✅     | ✅    | ❌     |
-| T7  | Reflective DLL Injection            | notepad.exe | ✅    | ✅     | ❌    | ❌     |
-| T8  | Thread Hijacking                    | notepad.exe | ❌    | ✅     | ❌    | ❌     |
-| T9  | NtCreateSection + NtMapViewOfSection| notepad.exe | ✅    | ✅     | ❌    | ❌     |
-| T10 | Module Stomping (amsi.dll)          | notepad.exe | ✅    | ✅     | ✅    | ❌     |
-| T11 | Process Doppelganging               | -           | ❌    | ❌     | ❌    | ❌     |
-| T12 | SetWindowsHookEx                    | system-wide | ❌    | ❌     | ✅    | ❌     |
-| T13 | AddressOfEntryPoint                 | notepad.exe | ✅    | ✅     | ❌    | ❌     |
-| T14 | PE Injection                        | notepad.exe | ✅    | ✅     | ❌    | ❌     |
+| #   | Technique                            | Target      | EID 7 | EID 8 | EID 10 | EID 25 |
+|-----|--------------------------------------|-------------|-------|-------|--------|--------|
+| T1  | Classic CreateRemoteThread           | notepad.exe | ❌    | ✅    | ✅     | ❌     |
+| T2  | NtCreateThreadEx                     | notepad.exe | ❌    | ✅    | ✅     | ❌     |
+| T3  | APC Early Bird                       | notepad.exe | ❌    | ❌    | ✅     | ❌     |
+| T4  | Process Hollowing                    | notepad.exe | ❌    | ❌    | ✅     | ✅     |
+| T5  | Direct Syscall                       | notepad.exe | ❌    | ✅    | ✅     | ❌     |
+| T6  | DLL Injection via LoadLibraryA       | notepad.exe | ✅    | ✅    | ✅     | ❌     |
+| T7  | Reflective DLL Injection             | notepad.exe | ❌    | ✅    | ✅     | ❌     |
+| T8  | Thread Hijacking                     | notepad.exe | ❌    | ❌    | ✅     | ❌     |
+| T9  | NtCreateSection + NtMapViewOfSection | notepad.exe | ❌    | ✅    | ✅     | ❌     |
+| T10 | Module Stomping (amsi.dll)           | notepad.exe | ✅    | ✅    | ✅     | ❌     |
+| T11 | Process Doppelganging                | —           | ❌    | ❌    | ❌     | ❌     |
+| T12 | SetWindowsHookEx                     | system-wide | ✅    | ❌    | ❌     | ❌     |
+| T13 | AddressOfEntryPoint                  | notepad.exe | ❌    | ✅    | ✅     | ❌     |
+| T14 | PE Injection                         | notepad.exe | ❌    | ✅    | ✅     | ❌     |
 
 ---
 
@@ -64,7 +63,7 @@ Config was iteratively updated throughout the lab as new access mask values and 
 
 | Finding                                              | Impact                              |
 |------------------------------------------------------|-------------------------------------|
-| EID 8 alone misses 5 techniques                      | APC, Hollow, Hijack, Hook, Doppel   |
+| EID 8 alone misses 4 techniques                      | APC, Hollow, Hijack, Hook           |
 | EID 7 only fires when Windows loader used            | Reflective and PE injection evade   |
 | EID 25 only catches main process image replacement   | Module stomping evades EID 25       |
 | Direct syscalls do not evade Sysmon                  | Kernel callbacks unaffected         |
