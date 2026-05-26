@@ -1,36 +1,76 @@
 # Comparision of Sysmon and Elastic Defend fields
 
 ## Eid 1 Process Create
-Sysmon EID 1 fires on every `CreateProcess`. Elastic Defend generates `process` events with `event.action: start` via its kernel-mode driver (`ElasticEndpoint.sys`), capturing similar telemetry through ETW + kernel callbacks.
+Every CreateProcess call generates EID 1. Sysmon hooks this via kernel process-creation callbacks registered through PsSetCreateProcessNotifyRoutineEx. Elastic Defend generates process events with event.action: start via its kernel-mode driver (ElasticEndpoint.sys), capturing equivalent telemetry through ETW and kernel callbacks.
 
-| Sysmon field | Elastic Defend field | Comment |
-|---|---|---|
-| `RuleName` | `-` | Missing custom rule name |
-| `UtcTime` | `@timestamp` | |
-| `ProcessGuid` | `process.entity_id` | |
-| `ProcessId` | `process.pid` | |
-| `Image` | `process.executable` | |
-| `FileVersion` | `-` | Not needed |
-| `Description` | `-` | Not available |
-| `Product` | `-` | Not needed but `process.name` |
-| `Company` | `-` | Could use `process.code_signature.subject_name` as well |
-| `OriginalFileName` | `process.pe.original_file_name` | |
-| `CommandLine` | `process.command_line` | |
-| `CurrentDirectory` | `process.working_directory` | |
-| `User` | `user.name` | But also `user.domain` and `user.id` |
-| `LogonGuid` | `-` | Not available but get `process.Ext.session_info*` with logon type etc |
-| `LogonId` | `process.Ext.authentication_id` | |
-| `TerminalSessionId` | `process.Ext.session_info.id` | |
-| `IntegrityLevel` | `process.Ext.token.integrity_level_name` | Additional `process.Ext.token*` fields like privileges, groups, elevation type |
-| `Hashes` | `process.hash.sha256` | `process.pe.imphash`as well but no other by default |
-| `ParentProcessGuid` | `process.parent.entity_id` | |
-| `ParentProcessId` | `process.parent.pid` | `process.Ext.ancestry` also for full chain |
-| `ParentImage` | `process.parent.executable` | |
-| `ParentCommandLine` | `process.parent.command_line` | |
-| `ParentUser` | `-` | Not available | |  
- 
- *Comment:* EDR has more fields focused on code signing, token integrity, and session info.
+### Event generation
+```Start-Process olk.exe```
+
+### Field comparision
+| Sysmon Rule Field | Sysmon Log Field | Elastic Defend Field | Comment |
+|---|---|---|---|
+| `RuleName` | `rule.name` | `-` | Sysmon: `technique_id=T1204,technique_name=User Execution`. No equivalent in EDR |
+| `UtcTime` | `@timestamp` | `@timestamp` | |
+| `ProcessGuid` | `process.entity_id` | `process.entity_id` | Different format: Sysmon uses `{GUID}`, Elastic uses opaque string |
+| `ProcessId` | `process.pid` | `process.pid` | |
+| `Image` | `process.executable` | `process.executable` | |
+| `FileVersion` | `process.pe.file_version` | `-` | Sysmon: `1.2023.918.0` mapped to `process.pe.file_version`. Not present in EDR process event |
+| `Description` | `process.pe.description` | `-` | Sysmon: `Microsoft Outlook Installer` via `winlog.event_data.Description`. Not in EDR |
+| `Product` | `process.pe.product` | `-` | Sysmon: `Microsoft Outlook Installer` via `winlog.event_data.Product`. Not in EDR |
+| `Company` | `process.pe.company` | `-` | Sysmon: `Microsoft Corporation` via `winlog.event_data.Company`. Not in EDR |
+| `OriginalFileName` | `process.pe.original_file_name` | `process.pe.original_file_name` | |
+| `CommandLine` | `process.command_line` | `process.command_line` | |
+| `CurrentDirectory` | `process.working_directory` | `process.working_directory` | |
+| `User` | `user.name` | `user.name` | EDR also provides `user.domain` and `user.id` (SID) |
+| `LogonGuid` | `winlog.event_data.LogonGuid` | `-` | Not available in EDR |
+| `LogonId` | `winlog.event_data.LogonId` | `process.Ext.authentication_id` | Both: `0x6e70a` |
+| `TerminalSessionId` | `winlog.event_data.TerminalSessionId` | `process.Ext.session_info.id` | Both: `1` |
+| `IntegrityLevel` | `winlog.event_data.IntegrityLevel` | `process.Ext.token.integrity_level_name` | Sysmon: `Medium`, EDR: `medium`. EDR adds `elevation_level: limited` and `token.security_attributes` |
+| `Hashes` | `process.hash.sha256` / `process.hash.sha1` / `process.hash.md5` | `process.hash.sha256` | Sysmon: SHA1+MD5+SHA256+IMPHASH. EDR: SHA256 only, plus `process.pe.imphash` separately |
+| `ParentProcessGuid` | `process.parent.entity_id` | `process.parent.entity_id` | |
+| `ParentProcessId` | `process.parent.pid` | `process.parent.pid` | |
+| `ParentImage` | `process.parent.executable` | `process.parent.executable` | |
+| `ParentCommandLine` | `process.parent.command_line` | `process.parent.command_line` | |
+| `ParentUser` | `winlog.event_data.ParentUser` | `-` | Sysmon: `WIN11\jens`. No equivalent field in EDR |
+| `-` | `-` | `process.Ext.ancestry` | EDR only full process chain as list of entity IDs |
+| `-` | `-` | `process.Ext.code_signature.*` | EDR only subject, trusted, status, thumbprint for process and parent |
+| `-` | `-` | `process.Ext.session_info.*` | EDR only logon type, auth package, user flags, relative logon time |
+| `-` | `-` | `process.Ext.token.elevation_level` | EDR only `limited` vs `full` |
+| `-` | `-` | `process.Ext.mitigation_policies` | EDR only e.g. `CET dynamic APIs can only be called out of proc` |
+| `-` | `-` | `process.Ext.effective_parent.*` | EDR only resolves true effective parent through process hosting, useful for parent spoof detection |
+| `-` | `-` | `process.Ext.created_suspended` | EDR only `true` here, flags process hollowing precursor |
+| `-` | `-` | `process.parent.Ext.real.*` | EDR only real parent pid/entity_id when reparenting has occurred |
+| `-` | `-` | `process.Ext.relative_file_creation_time` | EDR only age of executable on disk in seconds | 
+
+### Analysis
+The four PE metadata fields (FileVersion, Description, Product, Company) are a real gap in EDR. A notable EDR only field visible in this sample is process.Ext.effective_parent, which correctly resolves the true grandparent (explorer.exe) even when the immediate parent is a process host. EDR has richer parent context, code signing, token integrity, and session info.
 
 
 ## Eid 2 A process changed a file creation time 
-Sysmon EID 2 fires when a process modifies the creation timestamp of a file (timestomping). Elastic Defend captures this via file events with event.action: "change".
+Timestomping is a core anti-forensics primitive. Attackers use it to blend malicious files into legitimate-looking timestamps, defeating timeline analysis. Sysmon hooks NtSetInformationFile with FileBasicInformation class. Elastic Defend captures this via file events with event.action: "change".
+
+### Event generation
+```
+$file = "C:\Temp\test.txt"
+New-Item $file -Force
+$fi = [System.IO.FileInfo]$file
+$fi.LastWriteTime = "2026-05-26 00:00:00"
+$fi.CreationTime  = "2026-05-26 00:00:00"
+$fi.LastAccessTime = "2026-05-26 00:00:00"
+```
+
+### Field comparision
+Sysmon Rule Field | Sysmon Log Field | Elastic Defend Field | Comment |
+|---|---|---|---|
+| `RuleName` | `rule.name` | `-` | Missing custom rule name |
+| `UtcTime` | `@timestamp` | `@timestamp` |  |
+| `ProcessGuid` | `process.entity_id` | `process.entity_id` |  |
+| `ProcessId` | `process.pid` | `process.pid` |  |
+| `Image` | `process.executable` | `process.executable` |  |
+| `TargetFilename` | `file.name` | `file.name` |  |
+| `CreationUtcTime` | `winlog.event_data.CreationUtcTime` | `-` | Only event for overwrite and modification but no details |
+| `PreviousCreationUtcTime` | `winlog.event_data.PreviousCreationUtcTime` | `-` |  |
+| `User` | `user.name` | `user.name` | Also `user.domain` and `user.id` in EDR |
+
+### Analysis
+Limited options in EDR to see timestop, can however see events for overwrite, modification, and rename (including fields).
