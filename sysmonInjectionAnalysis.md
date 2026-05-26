@@ -1,6 +1,74 @@
-# Process injection techniques with Sysmon analysis
+# Process Injection Techniques with Sysmon Analysis
 Sysmon is a kernel driver (SysmonDrv.sys) that registers callbacks directly with the Windows kernel. It does not monitor userland DLLs like kernel32.dll or ntdll.dll. It monitors kernel objects and events
 at the lowest possible level below any userland bypass.
+
+## TLDR: Final Lab Summary Process Injection Detection Coverage
+
+### EID Coverage Per Technique
+| Technique                        | EID 7 | EID 8 | EID 10 | EID 25 |
+|----------------------------------|-------|-------|--------|--------|
+| T1  Classic CRT                  | ❌    | ✅    | ✅     | ❌     |
+| T2  NtCreateThreadEx             | ❌    | ✅    | ✅     | ❌     |
+| T3  APC Early Bird               | ❌    | ❌    | ✅     | ❌     |
+| T4  Process Hollowing            | ❌    | ❌    | ✅     | ✅     |
+| T5  Direct Syscall               | ❌    | ✅    | ✅     | ❌     |
+| T6  DLL Injection                | ✅    | ✅    | ✅     | ❌     |
+| T7  Reflective DLL               | ❌    | ✅    | ✅     | ❌     |
+| T8  Thread Hijacking             | ❌    | ❌    | ✅     | ❌     |
+| T9  NtCreateSection              | ❌    | ✅    | ✅     | ❌     |
+| T10 Module Stomping              | ✅    | ✅    | ✅     | ❌     |
+| T11 Doppelganging                | ❌    | ❌    | ❌     | ❌     |
+| T12 SetWindowsHookEx             | ✅    | ❌    | ❌     | ❌     |
+| T13 AOE Injection                | ❌    | ✅    | ✅     | ❌     |
+| T14 PE Injection                 | ❌    | ✅    | ✅     | ❌     |
+
+### EID 8 Detection Gaps Techniques That Bypass It
+| Technique              | Reason EID 8 Absent                              |
+|------------------------|--------------------------------------------------|
+| T3  APC Early Bird     | QueueUserAPC reuses existing thread              |
+| T4  Process Hollowing  | No thread created, SetThreadContext used         |
+| T8  Thread Hijacking   | SuspendThread/SetThreadContext on existing thread|
+| T11 Doppelganging      | Probably not viable on Windows 11                |
+| T12 SetWindowsHookEx   | Windows message dispatcher performs injection    |
+
+### EID 7 Detection Only Fires When Windows Loader Used
+| Technique              | EID 7 | Reason                                    |
+|------------------------|-------|-------------------------------------------|
+| T6  DLL Injection      | ✅    | LoadLibraryA triggers loader callback     |
+| T10 Module Stomping    | ✅    | LoadLibraryW used to load amsi.dll        |
+| T12 SetWindowsHookEx   | ✅    | Windows loads hook DLL via loader         |
+| T7  Reflective DLL     | ❌    | Self-maps loader never called           |
+| T14 PE Injection       | ❌    | Manual mapping, loader never called      |
+
+### EID 25 Detection — Image Tampering
+| Technique              | EID 25 | Type                  | Reason                        |
+|------------------------|--------|-----------------------|-------------------------------|
+| T4  Process Hollowing  | ✅     | Image is replaced     | NtUnmapViewOfSection used     |
+| T10 Module Stomping    | ❌     | -                     | VirtualProtectEx not detected |
+| T13 AOE Injection      | ❌     | -                     | Protection change only        |
+| All others             | ❌     | -                     | No image replacement          |
+
+---
+
+## GrantedAccess Observed Values
+
+| Technique                  | Observed Value | Comment                                              |
+|----------------------------|----------------|------------------------------------------------------|
+| T1  Classic CRT            | 0x1fffff (0x143a possible)       | Win32 promotes same-user same-session to full access |
+| T2  NtCreateThreadEx       | 0x1fffff (0x143a possible)       | Same Win32 promotion as T1                           |
+| T3  APC Early Bird         | 0x1fffff (0x143a possible)       | CreateProcess child handle grants full access        |
+| T4  Process Hollowing      | 0x1fffff (0x143a possible)       | CreateProcess child handle grants full access        |
+| T5  Direct Syscall         | 0x142a         | Kernel enforces exact rights — no Win32 promotion    |
+| T6  DLL Injection          | 0x102a         | Kernel substitutes QUERY_INFO for QUERY_LIMITED      |
+| T7  Reflective DLL (recon) | 0x1410         | Metasploit recon handle — VM_READ+QUERY_LTD only     |
+| T7  Reflective DLL (inject)| 0x3fff         | Metasploit injection handle — near full access       |
+| T8  Thread Hijacking       | 0x1428         | CREATE_THREAD (0x0002) absent — no thread created    |
+| T9  NtCreateSection        | 0x140a         | VM_WRITE (0x0020) absent — section mapping used      |
+| T10 Module Stomping        | 0x143a         | Standard minimal injection rights                    |
+| T11 Doppelganging          | -              | Failed lab attempt                                   |
+| T12 SetWindowsHookEx       | -              | No OpenProcess,  Windows dispatcher injects          |
+| T13 AOE Injection          | 0x143a         | Standard minimal injection rights                    |                                          |
+| T14 PE Injection           | 0x1fffff       | MAXIMUM_ALLOWED resolves to full access same-user    |
 
 ## What each Sysmon Event ID catches
 
@@ -164,7 +232,7 @@ On Kali run:
 - In EiD 10 exclude source image is "C:\Program Files\Elastic\Endpoint\elastic-endpoint.exe" and contains "elastic-otel-collector.exe"
 
 
-Then common header used for each exploit
+Then common header used in several of the techniques
 ```
 #pragma once
 #include <Windows.h>
