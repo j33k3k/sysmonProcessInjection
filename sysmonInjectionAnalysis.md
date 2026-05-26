@@ -2120,3 +2120,67 @@ EID 8 StartModule shows Notepad.exe confirming shellcode executes from within th
 - **EID 8** `StartFunction: -` entry point has no named function because shellcode overwrote it. Named module with no function name is a stomping indicator.
 - **EID 10** `CallTrace: Notepad.exe+1623ec` — shellcode calling APIs from within the named module. No UNKNOWN appears anywhere in the call chain.
 - **EID 25 absent** VirtualProtectEx changing existing memory protection did not trigger image tamper notification. Same gap as T10 module stomping, Sysmon EID 25 only catches image replacement not protection changes.
+
+
+## T.14 PE Injection
+Maps a full portable executable into a remote process and executes a specific function within it. Unlike DLL injection which uses LoadLibraryA, PE injection manually copies the PE image, applies base relocations, then executes a chosen function via CreateRemoteThread. Print showing the injector executed its function InjectionEntryPoint and printed out the name of a module the code was running from.
+<img width="495" height="221" alt="image" src="https://github.com/user-attachments/assets/29e5a3e3-df7c-4353-bc27-fd836ec130cf" />
+
+| API Call                | Layer | Sysmon Event |
+|-------------------------|-------|--------------|
+| OpenProcess()           | Win32 | EID 10       |
+| VirtualAllocEx()        | Win32 | -            |
+| WriteProcessMemory()    | Win32 | -            |
+| CreateRemoteThread()    | Win32 | EID 8        |
+
+### Sysmon Data
+1. "Process accessed:
+RuleName: -
+UtcTime: 2026-05-26 08:21:54.165
+SourceProcessGUID: {ED9BFE1B-5822-6A15-5202-000000001700}
+SourceProcessId: 12116
+SourceThreadId: 13016
+SourceImage: C:\Users\jens\Documents\procInj\t14_pe_injection.exe
+TargetProcessGUID: {ED9BFE1B-581E-6A15-5102-000000001700}
+TargetProcessId: 2100
+TargetImage: C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_11.2604.5.0_x64__8wekyb3d8bbwe\Notepad\Notepad.exe
+GrantedAccess: 0x1fffff
+CallTrace: C:\WINDOWS\SYSTEM32\ntdll.dll+162164|C:\WINDOWS\System32\KERNELBASE.dll+360c6|C:\Users\jens\Documents\procInj\t14_pe_injection.exe+16f6|C:\Users\jens\Documents\procInj\t14_pe_injection.exe+10d9|C:\Users\jens\Documents\procInj\t14_pe_injection.exe+1456|C:\WINDOWS\System32\KERNEL32.DLL+2e957|C:\WINDOWS\SYSTEM32\ntdll.dll+427c
+SourceUser: WIN11\jens
+TargetUser: WIN11\jens"
+
+2. "CreateRemoteThread detected:
+RuleName: technique_id=T1055,technique_name=Process Injection
+UtcTime: 2026-05-26 08:21:54.169
+SourceProcessGuid: {ED9BFE1B-5822-6A15-5202-000000001700}
+SourceProcessId: 12116
+SourceImage: C:\Users\jens\Documents\procInj\t14_pe_injection.exe
+TargetProcessGuid: {ED9BFE1B-581E-6A15-5102-000000001700}
+TargetProcessId: 2100
+TargetImage: C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_11.2604.5.0_x64__8wekyb3d8bbwe\Notepad\Notepad.exe
+NewThreadId: 1192
+StartAddress: 0x0000026A5B94156D
+StartModule: -
+StartFunction: -
+SourceUser: WIN11\jens
+TargetUser: WIN11\jens"
+
+### Sysmon Analysis
+Code spanws MessageBox instead of reverse shell so only two events generated,  EID 10 and EID 8. No EID 1 because MessageBox does not spawn child process. 
+| Step | Action                                    | Sysmon EID | Rule Triggered          |
+|------|-------------------------------------------|------------|-------------------------|
+| 1    | Injector opens handle to Notepad          | EID 10     | no rule name yet        |
+| 2    | PE headers copied to local buffer         | -          | -                       |
+| 3    | Base relocations applied                  | -          | -                       |
+| 4    | Relocated PE written to remote memory     | -          | -                       |
+| 5    | CreateRemoteThread at injection entry     | EID 8      | T1055 Process Injection |
+| 6    | MessageBox displayed in notepad context   | -          | -      |
+
+### Key Indicators
+- **EID 8** `StartModule: -` PE mapped into anonymous RWX memory.
+  Manual mapping bypasses Windows loader.
+  - **EID 8** `StartFunction: -` no named function at mapped address.
+  Injector calculates delta between local and remote addresses and
+  adds it to InjectionEntryPoint,  no symbol information available.
+- **EID 7 absent** Windows loader never called. Manual PE mapping
+  bypasses PsSetLoadImageNotifyRoutine entirely.
