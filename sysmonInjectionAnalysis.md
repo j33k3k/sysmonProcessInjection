@@ -2001,3 +2001,122 @@ EID 8 is completely absent as SetWindowsHookEx does not create a remote thread i
 
 
 ## T13. AddressOfEntryPoint without VirtualAllocEx RWX
+Injects shellcode into a target process without allocating anonymous RWX memory. Instead of VirtualAllocEx, the existing PE entry point memory protection is changed with VirtualProtectEx and shellcode is written directly into the process image. Shellcode executes from within the named process binary and not anonymous memory.
+| API Call                | Layer      | Sysmon Event |
+|-------------------------|------------|--------------|
+| OpenProcess()           | Win32      | EID 10       |
+| NtQueryInformationProcess| Native API | -           |
+| ReadProcessMemory()     | Win32      | -            |
+| VirtualProtectEx()      | Win32      | -            |
+| WriteProcessMemory()    | Win32      | -            |
+| CreateRemoteThread()    | Win32      | EID 8        |
+
+### Sysmon Data
+1. "Process accessed:
+RuleName: -
+UtcTime: 2026-05-26 07:36:33.249
+SourceProcessGUID: {ED9BFE1B-4D81-6A15-E901-000000001700}
+SourceProcessId: 5132
+SourceThreadId: 9988
+SourceImage: C:\Users\jens\Documents\procInj\t13_aoe_injection.exe
+TargetProcessGUID: {ED9BFE1B-4A3A-6A15-C801-000000001700}
+TargetProcessId: 12916
+TargetImage: C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_11.2604.5.0_x64__8wekyb3d8bbwe\Notepad\Notepad.exe
+GrantedAccess: 0x143a
+CallTrace: C:\WINDOWS\SYSTEM32\ntdll.dll+162164|C:\WINDOWS\System32\KERNELBASE.dll+360c6|C:\Users\jens\Documents\procInj\t13_aoe_injection.exe+1611|C:\Users\jens\Documents\procInj\t13_aoe_injection.exe+10d9|C:\Users\jens\Documents\procInj\t13_aoe_injection.exe+1456|C:\WINDOWS\System32\KERNEL32.DLL+2e957|C:\WINDOWS\SYSTEM32\ntdll.dll+427c
+SourceUser: WIN11\jens
+TargetUser: WIN11\jens"
+
+2. "CreateRemoteThread detected:
+RuleName: technique_id=T1055,technique_name=Process Injection
+UtcTime: 2026-05-26 07:36:33.265
+SourceProcessGuid: {ED9BFE1B-4D81-6A15-E901-000000001700}
+SourceProcessId: 5132
+SourceImage: C:\Users\jens\Documents\procInj\t13_aoe_injection.exe
+TargetProcessGuid: {ED9BFE1B-4A3A-6A15-C801-000000001700}
+TargetProcessId: 12916
+TargetImage: C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_11.2604.5.0_x64__8wekyb3d8bbwe\Notepad\Notepad.exe
+NewThreadId: 12712
+StartAddress: 0x00007FF712BA2230
+StartModule: C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_11.2604.5.0_x64__8wekyb3d8bbwe\Notepad\Notepad.exe
+StartFunction: -
+SourceUser: WIN11\jens
+TargetUser: WIN11\jens"
+
+3. "Process Create:
+RuleName: technique_id=T1059.003,technique_name=Windows Command Shell
+UtcTime: 2026-05-26 07:36:33.405
+ProcessGuid: {ED9BFE1B-4D81-6A15-EA01-000000001700}
+ProcessId: 6820
+Image: C:\Windows\System32\cmd.exe
+FileVersion: 10.0.26100.8328 (WinBuild.160101.0800)
+Description: Windows Command Processor
+Product: Microsoft® Windows® Operating System
+Company: Microsoft Corporation
+OriginalFileName: Cmd.Exe
+CommandLine: cmd
+CurrentDirectory: C:\Users\jens\
+User: WIN11\jens
+LogonGuid: {ED9BFE1B-41F0-6A15-0AE7-060000000000}
+LogonId: 0x6e70a
+TerminalSessionId: 1
+IntegrityLevel: Medium
+Hashes: SHA1=8EFFECCD068002141AEF22B095A52E1D41656C98,MD5=CED4AA0B4CBF72E2520E0A2CCFF79370,SHA256=D5697FEF6995E992B9232A2B19665A297743427316C7225A5B772F0032F20FCA,IMPHASH=B0F049C014592B156EB1FA857E99CEB9
+ParentProcessGuid: {ED9BFE1B-4A3A-6A15-C801-000000001700}
+ParentProcessId: 12916
+ParentImage: C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_11.2604.5.0_x64__8wekyb3d8bbwe\Notepad\Notepad.exe
+ParentCommandLine: ""C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_11.2604.5.0_x64__8wekyb3d8bbwe\Notepad\Notepad.exe"" RestartByRestartManager:* 
+ParentUser: WIN11\jens"
+
+4. "Process accessed:
+RuleName: technique_id=T1055.001,technique_name=ProcessInjectionDelux
+UtcTime: 2026-05-26 07:36:33.432
+SourceProcessGUID: {ED9BFE1B-4A3A-6A15-C801-000000001700}
+SourceProcessId: 12916
+SourceThreadId: 12712
+SourceImage: C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_11.2604.5.0_x64__8wekyb3d8bbwe\Notepad\Notepad.exe
+TargetProcessGUID: {ED9BFE1B-4D81-6A15-EA01-000000001700}
+TargetProcessId: 6820
+TargetImage: C:\WINDOWS\system32\cmd.exe
+GrantedAccess: 0x1fffff
+CallTrace: C:\WINDOWS\SYSTEM32\ntdll.dll+1636b4|C:\WINDOWS\System32\KERNELBASE.dll+8b82d|C:\WINDOWS\System32\KERNELBASE.dll+88d43|C:\WINDOWS\System32\KERNELBASE.dll+888a6|C:\WINDOWS\System32\KERNEL32.DLL+44f14|C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_11.2604.5.0_x64__8wekyb3d8bbwe\Notepad\Notepad.exe+1623ec|C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_11.2604.5.0_x64__8wekyb3d8bbwe\Notepad\Notepad.exe+1623ec
+SourceUser: WIN11\jens
+TargetUser: WIN11\jens"
+
+5. "Network connection detected:
+RuleName: technique_id=T1571,technique_name=Non-Standard Port
+UtcTime: 2026-05-26 07:36:35.828
+ProcessGuid: {ED9BFE1B-4A3A-6A15-C801-000000001700}
+ProcessId: 12916
+Image: C:\Program Files\WindowsApps\Microsoft.WindowsNotepad_11.2604.5.0_x64__8wekyb3d8bbwe\Notepad\Notepad.exe
+User: WIN11\jens
+Protocol: tcp
+Initiated: true
+SourceIsIpv6: false
+SourceIp: 192.168.32.13
+SourceHostname: -
+SourcePort: 50818
+SourcePortName: -
+DestinationIsIpv6: false
+DestinationIp: 192.168.32.49
+DestinationHostname: -
+DestinationPort: 4444
+DestinationPortName: -"
+
+### Sysmon Analysis 
+EID 8 StartModule shows Notepad.exe confirming shellcode executes from within the named process binary and not anonymous memory. Most notable finding is EID 10 CallTrace showing Notepad.exe instead of UNKNOWN.
+| Step | Action                                    | Sysmon EID | Rule Triggered          |
+|------|-------------------------------------------|------------|-------------------------|
+| 1    | Injector opens handle to Notepad          | EID 10     | update rule name        |
+| 2    | PEB read to get image base                | -          | -                       |
+| 3    | PE headers read to find entry point       | -          | -                       |
+| 4    | VirtualProtectEx changes EP to RWX        | -          | -                       |
+| 5    | Shellcode written to entry point          | -          | -                       |
+| 6    | CreateRemoteThread at entry point         | EID 8      | T1055 Process Injection |
+| 7    | Shellcode opens handle to cmd.exe         | EID 10     | ProcessInjectionDelux   |
+
+### Key Indicators
+- **EID 8** `StartModule: Notepad.exe` thread starts from named process binary not anonymous memory.
+- **EID 8** `StartFunction: -` entry point has no named function because shellcode overwrote it. Named module with no function name is a stomping indicator.
+- **EID 10** `CallTrace: Notepad.exe+1623ec` — shellcode calling APIs from within the named module. No UNKNOWN appears anywhere in the call chain.
+- **EID 25 absent** VirtualProtectEx changing existing memory protection did not trigger image tamper notification. Same gap as T10 module stomping, Sysmon EID 25 only catches image replacement not protection changes.
