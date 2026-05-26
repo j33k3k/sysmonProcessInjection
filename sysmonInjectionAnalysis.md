@@ -191,6 +191,8 @@ SeDebugPrivilege which allows a process to open handles to any process regardles
 1. Windows 11 Host running ELK in WSL with local FW rules to push traffic through host to WSL
 2. Windows 11 in VirtualBox with Elastic Agent, Sysmon v15.2 and sysmonconfig-olaf-filedelete.xml on bridged network
 4. Kali VM as attacking machine on bridged network
+5. Install mingw64 on VM, set ```$env:PATH += ";C:\msys64\mingw64\bin"```
+6. Compile ```g++ t1_classic_crt.cpp -o t1_classic_crt.exe -lws2_32```
 
 ### Initialize common.h header with shellcode
 On Kali run:
