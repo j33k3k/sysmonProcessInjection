@@ -106,19 +106,19 @@ Process created or image modified
 | 0x047a   | VM_WRITE+VM_OP+CREATE_THREAD+DUP_HANDLE                  | Injection with handle duplication           |
 | 0x1f0fff | ALL_ACCESS older Windows builds                          | Pre-Win8 PROCESS_ALL_ACCESS variant         |
 | 0x1f3fff | ALL_ACCESS alternate                                     | Seen in older Metasploit modules            |
-| 0x0478   | VM_WRITE+VM_OP+DUP_HANDLE+QUERY                          | No thread creation — APC or hijack path     |
+| 0x0478   | VM_WRITE+VM_OP+DUP_HANDLE+QUERY                          | No thread creation APC or hijack path     |
 | 0x1438   | VM_WRITE+VM_OP+SUSPEND_RESUME+QUERY                      | Thread hijacking injection                  |
 | 0x0002   | CREATE_THREAD only                                       | Thread creation in already-written memory   |
 | 0x0008   | VM_OPERATION only                                        | VirtualProtect changes, no write            |
 | 0x101a   | VM_WRITE+VM_OP+VM_READ+QUERY_LIMITED                     | Reflective DLL injection pattern            |
 | 0x147a   | VM_WRITE+VM_OP+CREATE_THREAD+DUP+QUERY+SUSPEND           | Full injection with suspend capability      |
-| 0x102a   | VM_WRITE+VM_OP+CREATE_THREAD+QUERY_LIMITED               | T6 DLL injection — lab observed             |
-| 0x142a   | VM_WRITE+VM_OP+CREATE_THREAD+QUERY+QUERY_LIMITED         | T5 direct syscall — lab observed            |
+| 0x102a   | VM_WRITE+VM_OP+CREATE_THREAD+QUERY_LIMITED               | T6 DLL injection, lab observed             |
+| 0x142a   | VM_WRITE+VM_OP+CREATE_THREAD+QUERY+QUERY_LIMITED         | T5 direct syscall, lab observed            |
 | 0x1c28   | VM_WRITE+VM_OP+SUSPEND+QUERY_LIMITED                     | T3 APC injection minimum                    |
 | 0x1c2a   | VM_WRITE+VM_OP+CREATE_THREAD+SUSPEND+QUERY_LIMITED       | Full hijack with thread creation            |
 | 0x1028   | VM_WRITE+VM_OP+QUERY_LIMITED                             | Write without thread creation               |
 | 0x1038   | VM_WRITE+VM_OP+VM_READ+QUERY_LIMITED                     | Memory RW without thread                    |
-| 0x103a   | VM_WRITE+VM_OP+VM_READ+CREATE_THREAD+QUERY_LIMITED       | Full minimal inject — QUERY_LIMITED variant |
+| 0x103a   | VM_WRITE+VM_OP+VM_READ+CREATE_THREAD+QUERY_LIMITED       | Full minimal inject, QUERY_LIMITED variant |
 | 0x042a   | VM_WRITE+VM_OP+CREATE_THREAD+QUERY_INFORMATION           | Requested minimum before kernel substitutes |
 | 0x042b   | VM_WRITE+VM_OP+CREATE_THREAD+DUP+QUERY_INFORMATION       | Injection with handle dup QUERY variant     |
 | 0x102b   | VM_WRITE+VM_OP+CREATE_THREAD+DUP+QUERY_LIMITED           | Handle dup minimal QUERY_LIMITED variant    |
