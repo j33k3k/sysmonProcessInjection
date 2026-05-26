@@ -116,3 +116,42 @@ Sysmon EID 3 fires on every outbound and inbound TCP/UDP connection, hooking at 
 
 ### Analysis
 Core network fields are fully equivalent between both sensors IP, port, transport, and direction are all present. EDR is meaningfully richer in two areas GeoIP enrichment and ASN data. The field `process.uptime` is an EDR exclusive field useful for detecting beaconing from freshly spawned processes. 
+
+
+## EID 4 SKIPPED
+
+## EID 5 Process Terminated 
+EID 5 fires when any process exits, hooking the same PsSetCreateProcessNotifyRoutineEx callback as EID 1 but on the exit path. Elastic Defend generates a matching process event with event.action: end
+
+### Event Generation
+```
+Start-Process notepad.exe
+Start-Sleep 3
+Stop-Process -Name "Notepad" -Force
+```
+
+### Field Comparision
+| Sysmon Rule Field | Sysmon Log Field | Elastic Defend Field | Comment |
+|---|---|---|---|
+| `RuleName` | `rule.name` | `-` | No equivalent in EDR |
+| `UtcTime` | `@timestamp` | `@timestamp` | |
+| `ProcessGuid` | `process.entity_id` | `process.entity_id` | Different format: Sysmon uses `{GUID}`, Elastic uses opaque string |
+| `ProcessId` | `process.pid` | `process.pid` | |
+| `Image` | `process.executable` | `process.executable` | |
+| `User` | `user.name` | `user.name` | EDR also provides `user.domain` and `user.id` (SID) |
+| `-` | `-` | `process.exit_code` | EDR only `0` (clean exit). Sysmon EID 5 does not capture exit code |
+| `-` | `-` | `process.hash.sha256` | EDR only hash present on termination event. Sysmon EID 5 does not include hashes |
+| `-` | `-` | `process.pe.original_file_name` | EDR only `NOTEPAD.EXE`, revealing masquerading despite renamed binary |
+| `-` | `-` | `process.pe.imphash` | EDR only |
+| `-` | `-` | `process.command_line` | EDR only full command line on exit event |
+| `-` | `-` | `process.parent.*` | EDR only full parent context (executable, pid, command line, entity_id) |
+| `-` | `-` | `process.Ext.ancestry` | EDR only full process chain at time of exit |
+| `-` | `-` | `process.Ext.code_signature.*` | EDR only signing status of terminated process |
+| `-` | `-` | `process.Ext.token.*` | EDR only integrity level, elevation level, security attributes |
+| `-` | `-` | `process.Ext.session_info.*` | EDR only logon type, auth package, session id |
+| `-` | `-` | `process.Ext.relative_file_creation_time` | EDR only age of executable on disk at time of exit |
+| `-` | `-` | `process.Ext.created_suspended` | EDR only — `true`, process was created suspended |
+| `-` | `-` | `process.parent.thread.Ext.call_stack_contains_unbacked` | EDR only `true` on parent thread, indicating unbacked memory in call stack (injection indicator) |
+
+### Analysis
+EID 5 is Sysmon's leanest event only four fields (timestamp, GUID, PID, image, user). EDR's termination event is richer because it carries the full process context snapshot at exit time. Field `process.exit_code` enables detecting abnormal terminations (non zero exits from normally clean processes can indicate crashes caused by injection) and `process.parent.thread.Ext.call_stack_contains_unbacked: true` on the parent process is an injection indicator.
