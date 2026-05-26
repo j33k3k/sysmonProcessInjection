@@ -1,6 +1,6 @@
 # Process Injection Techniques with Sysmon Analysis
-Sysmon is a kernel driver (SysmonDrv.sys) that registers callbacks directly with the Windows kernel. It does not monitor userland DLLs like kernel32.dll or ntdll.dll. It monitors kernel objects and events
-at the lowest possible level below any userland bypass.
+Sysmon is a kernel driver (SysmonDrv.sys) that registers callbacks directly with the Windows kernel. It's a low-level driver that registers callback routines with the Windows kernel. Whenever core system actions occur (e.g., a process launches, a network connection is attempted, or a driver loads), the kernel immediately notifies the Sysmon driver. It does not monitor userland DLLs like kernel32.dll or ntdll.dll. Instead it monitors kernel objects and events
+at the lowest possible level below any userland bypass. The Sysmon service then runs in the background as a protected process. It receives data from the kernel driver, cross-references it with the user-defined rules in the configuration file, and formats the events into readable logs.
 
 ## TLDR: Final Lab Summary Process Injection Detection Coverage
 
