@@ -25,6 +25,7 @@ at the lowest possible level below any userland bypass. The Sysmon service then 
 ---
 
 ### GrantedAccess Observed Values
+For each technique the minimal possible valute was set for `GrantedAccess` to succeed. This bit value can easily be modified and should not be used as a single strong detection signal.
 
 | Technique                  | Observed Value | Comment                                              |
 |----------------------------|----------------|------------------------------------------------------|
