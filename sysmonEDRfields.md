@@ -1,6 +1,6 @@
 # Comparision of Sysmon and Elastic Defend fields
 
-## Sysmon Config fixes
+## Sysmon Config discoveries
 - In the config there needs to be a explicit rule included for the include/exclude RuleGroups to trigger, had missed on the include and did not trigger any eid 6
 
 ## Eid 1 Process Create
