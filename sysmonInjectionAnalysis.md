@@ -964,7 +964,7 @@ PROCESS_CREATE_THREAD     0x0002
 PROCESS_QUERY_LIMITED_INFORMATION 0x1000
 Total                     0x102a
 ```
-Updated ProcessInjectionDelux config in Sysmon EID 10 to include 0x102a but also 0x042a, 0x043a and 0x0428 to cover variants with the PROCESS_QUERY_LIMITED_INFORMATION bit. Now GrantedAccess looks for include on (0x1FFFFF;0x1F0FFF;0x1F1FFF;0x1F2FFF;0x1F3FFF;0x143A;0x147A;0x047A;0x1410;0x1438;0x0478;0x1010;0x042A;0x43A;0x0428;0x102A). Will need to create specific include filters else it will be noisy.
+Updated ProcessInjectionDelux config in Sysmon EID 10 to include 0x102a but also 0x042a, 0x043a and 0x0428 to cover variants with the PROCESS_QUERY_LIMITED_INFORMATION bit. Now GrantedAccess looks for include on (0x1FFFFF;0x1F0FFF;0x1F1FFF;0x1F2FFF;0x1F3FFF;0x143A;0x147A;0x047A;0x1410;0x1438;0x0478;0x1010;0x042A;0x43A;0x0428;0x102A;0x1428). Will need to create specific include filters else it will be noisy.
 
 | Step | Action                                  | Sysmon EID | Rule Triggered           |
 |------|-----------------------------------------|------------|--------------------------|
