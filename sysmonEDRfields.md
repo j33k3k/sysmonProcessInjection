@@ -176,8 +176,8 @@ EID 6 fires when a kernel driver is loaded, hooking PsSetLoadImageNotifyRoutine 
 ### Field Comparision
 | Sysmon Rule Field | Sysmon Log Field | Elastic Defend Field | Comment |
 |---|---|---|---|
-| `RuleName` | `rule.name` | `-` | Sysmon: `-` (no rule matched). No equivalent in EDR |
-| `UtcTime` | `@timestamp` | `@timestamp` | Both: `2026-05-27T12:43:02.955Z` — identical timestamps |
+| `RuleName` | `rule.name` | `-` | No equivalent in EDR |
+| `UtcTime` | `@timestamp` | `@timestamp` | identical timestamps |
 | `ImageLoaded` | `file.path` | `dll.path` | Sysmon maps to `file.*`, EDR maps to `dll.*` namespace |
 | `Hashes` | `file.hash.sha256` / `file.hash.sha1` / `file.hash.md5` | `dll.hash.sha256` | Sysmon: SHA1+MD5+SHA256+IMPHASH. EDR: SHA256 only plus `dll.pe.imphash` separately |
 | `Signed` | `winlog.event_data.Signed` | `-` | Sysmon: `true` as string. EDR uses `dll.code_signature.trusted` boolean instead |
@@ -185,17 +185,58 @@ EID 6 fires when a kernel driver is loaded, hooking PsSetLoadImageNotifyRoutine 
 | `SignatureStatus` | `file.code_signature.status` | `dll.code_signature.status` | Sysmon: `Valid`. EDR: `trusted`. Different vocabulary for same concept |
 | `-` | `file.code_signature.trusted` | `dll.code_signature.trusted` | Both present but under different namespaces |
 | `-` | `file.code_signature.valid` | `-` | Sysmon ECS mapping adds `valid` boolean separately from `trusted` |
-| `-` | `-` | `dll.code_signature.thumbprint_sha256` | EDR only — certificate thumbprint for precise cert identification |
-| `-` | `-` | `dll.pe.file_version` | EDR only — `10.0.26100.8457`, not captured by Sysmon EID 6 |
-| `-` | `-` | `dll.pe.original_file_name` | EDR only — `NDISTAPI.SYS`, useful for masquerading detection |
-| `-` | `file.pe.imphash` | `dll.pe.imphash` | Both: `3cb5c68a63c2efec3ba4de9d681b503d` — different namespace |
-| `-` | `-` | `dll.Ext.size` | EDR only — `65536` bytes |
-| `-` | `-` | `dll.Ext.relative_file_creation_time` | EDR only — age of driver file on disk in seconds |
-| `-` | `-` | `dll.Ext.relative_file_name_modify_time` | EDR only — time since last modification in seconds |
-| `-` | `-` | `dll.Ext.load_index` | EDR only — order in which the driver was loaded during boot sequence |
-| `-` | `-` | `process.Ext.protection` | EDR only — `PsProtectedSignerWinSystem`, loading process protection level |
-| `-` | `-` | `process.uptime` | EDR only — system uptime in seconds at time of driver load |
+| `-` | `-` | `dll.code_signature.thumbprint_sha256` | EDR only certificate thumbprint for precise cert identification |
+| `-` | `-` | `dll.pe.file_version` | EDR only, not captured by Sysmon EID 6 |
+| `-` | `-` | `dll.pe.original_file_name` | EDR only useful for masquerading detection |
+| `-` | `file.pe.imphash` | `dll.pe.imphash` | |
+| `-` | `-` | `dll.Ext.size` | EDR only |
+| `-` | `-` | `dll.Ext.relative_file_creation_time` | EDR only age of driver file on disk in seconds |
+| `-` | `-` | `dll.Ext.relative_file_name_modify_time` | EDR only time since last modification in seconds |
+| `-` | `-` | `dll.Ext.load_index` | EDR only order in which the driver was loaded during boot sequence |
+| `-` | `-` | `process.Ext.protection` | EDR only `PsProtectedSignerWinSystem`, loading process protection level |
+| `-` | `-` | `process.uptime` | EDR only system uptime in seconds at time of driver load |
 | `-` | `-` | `user.name` / `user.domain` | EDR captures loading user context (`SYSTEM`). Sysmon EID 6 has no user field |
 
 ### Analysis
 Both captured the same driver load at identical timestamps with good coverage of the core fields. Sysmons maps everything under field `file.*` while EDR under `dll.*`. EDR is richer on PE metadata (file_version, original_file_name) and certificate details (thumbprint_sha256). The `dll.Ext.load_index` field is unique to EDR and useful for detecting drivers loaded late in the boot sequence as an anomaly indicator. Sysmon's edge is the multi hashing (SHA1+MD5) and the separate valid vs trusted boolean split in the ECS mapping where trusted means the cert chain is trusted by Windows, valid means the signature is cryptographically intact, which can differ when a valid signature is signed by an untrusted or expired certificate.
+
+
+## EID 7 Image Loaded
+EID 7 fires on every DLL loaded into a process, hooking PsSetLoadImageNotifyRoutine at the kernel level. Elastic Defend captures DLL loads in `endpoint.events.library` with `event.action: load`, the same dataset as EID 6 but scoped to user mode images rather than kernel drivers.
+
+### Event Generation
+```
+Identify any normal process which loads a dll file, for example MicrosoftEdgeUpdate.exe AND taskschd.dll
+```
+
+### Field Comparision
+| Sysmon Rule Field | Sysmon Log Field | Elastic Defend Field | Comment |
+|---|---|---|---|
+| `RuleName` | `rule.name` | `-` | No equivalent in EDR |
+| `UtcTime` | `@timestamp` | `@timestamp` | identical timestamps |
+| `ProcessGuid` | `process.entity_id` | `process.entity_id` | Different format: Sysmon uses `{GUID}`, Elastic uses opaque string |
+| `ProcessId` | `process.pid` | `process.pid` | |
+| `Image` | `process.executable` | `process.executable` | |
+| `ImageLoaded` | `dll.path` | `dll.path` | |
+| `FileVersion` | `winlog.event_data.FileVersion` | `dll.pe.file_version` | Sysmon via `winlog.event_data`, EDR natively in `dll.pe.*` |
+| `Description` | `winlog.event_data.Description` | `-` | Not present in EDR |
+| `Product` | `winlog.event_data.Product` | `-` | Not present in EDR |
+| `Company` | `winlog.event_data.Company` | `-` | Not present in EDR |
+| `OriginalFileName` | `dll.pe.original_file_name` | `dll.pe.original_file_name` | |
+| `Hashes` | `dll.hash.sha256` / `dll.hash.sha1` / `dll.hash.md5` | `dll.hash.sha256` | Sysmon: SHA1+MD5+SHA256+IMPHASH. EDR: SHA256 only plus `dll.pe.imphash` separately |
+| `Signed` | `winlog.event_data.Signed` | `-` | Sysmon: `true` as string. EDR uses `dll.code_signature.trusted` boolean instead |
+| `Signature` | `dll.code_signature.subject_name` | `dll.code_signature.subject_name` | |
+| `SignatureStatus` | `file.code_signature.status` | `dll.code_signature.status` | Sysmon: `Valid`, EDR: `trusted`, different vocabulary |
+| `User` | `user.name` | `user.name` | Both: `SYSTEM`. EDR also provides `user.domain` and `user.id` |
+| `-` | `file.code_signature.valid` | `-` | Sysmon ECS mapping only, separates cryptographic validity from trust |
+| `-` | `-` | `dll.code_signature.thumbprint_sha256` | EDR only, certificate thumbprint for precise cert identification |
+| `-` | `-` | `dll.Ext.size` | EDR only |
+| `-` | `-` | `dll.Ext.load_index` | EDR only load order index within the process |
+| `-` | `-` | `dll.Ext.relative_file_creation_time` | EDR only age of DLL on disk in seconds |
+| `-` | `-` | `dll.Ext.relative_file_name_modify_time` | EDR only time since last modification in seconds |
+| `-` | `-` | `process.code_signature.*` | EDR only signing status of the loading process |
+| `-` | `-` | `process.uptime` | EDR only process age in seconds at time of DLL load (`0` loaded at process start) |
+
+### Analysis
+Core fields are well covered in both agents. The Sysmon advantage here is the three PE metadata fields Description, Product, and Company that are absent from EDR. These are valuable for detecting suspicious DLL behaviors. EDR compensates with richer context around the loading process `process.code_signature.*` and DLL file age `relative_file_creation_time`.
+Also the `process.uptime: 0` field that checks when the DLL was loaded, at process startup or injected later which is useful for distinguishing legitimate load-time linking from runtime injection.
