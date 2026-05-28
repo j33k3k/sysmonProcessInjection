@@ -430,3 +430,489 @@ Compile and run t1_classic_crt.cpp
 
 ### Analysis
 The two most critical gaps in EDR for EID 10 are GrantedAccess and CallTrace where both are absent from endpoint.events.api and instead replaced with other `process.Ext.api.*` fields. However, this is just the raw events without any EDR behaviour module enabled which provides richer and more contextual alert fields, see example above.
+
+
+## EID 11 FileCreate
+EID 11 fires on every file creation or overwrite. Sysmon hooks the minifilter IRP_MJ_CREATE callback at the filesystem layer. Elastic Defend captures file events via its kernel driver generating `endpoint.events.file` events with `event.action: creation`.
+
+### Event Generation
+```New-Item "C:\Temp\malicious.exe" -ItemType File -Force```
+
+### Field Comparision
+| Sysmon Rule Field | Sysmon Log Field | Elastic Defend Field | Comment |
+|---|---|---|---|
+| `RuleName` | `rule.name` | `-` | No equivalent in EDR |
+| `UtcTime` | `@timestamp` | `@timestamp` | |
+| `ProcessGuid` | `process.entity_id` | `process.entity_id` | Different format: Sysmon uses `{GUID}`, Elastic uses opaque string |
+| `ProcessId` | `process.pid` | `process.pid` | |
+| `Image` | `process.executable` | `process.executable` | |
+| `TargetFilename` | `file.path` | `file.path` | |
+| `CreationUtcTime` | `winlog.event_data.CreationUtcTime` | `-` | Not present in EDR |
+| `User` | `user.name` | `user.name` | EDR also provides `user.domain` and `user.id` (SID) |
+| `-` | `file.extension` | `file.extension` | |
+| `-` | `file.name` | `file.name` | |
+| `-` | `file.directory` | `-` | Sysmon ECS mapping only |
+| `-` | `-` | `file.size` | EDR only `0` bytes (empty file at creation time) |
+| `-` | `-` | `file.Ext.entropy` | EDR only `0` entropy at creation useful for detecting pre-filled vs empty drops |
+| `-` | `-` | `file.Ext.header_bytes` | EDR only first bytes of file content in hex (empty here but populated on writes) |
+| `-` | `-` | `process.parent.pid` | EDR only parent process PID |
+| `-` | `-` | `process.thread.id` | EDR only thread that created the file |
+| `-` | `-` | `process.code_signature.*` | EDR only signing status of the creating process (`Microsoft Windows`, trusted) |
+| `-` | `-` | `process.Ext.code_signature.*` | EDR only extended code signature with thumbprint |
+
+### Analysis
+Core fields are equivalent on both sides. The meaningful EDR advantages are `file.size` and `file.Ext.entropy` at creation time. The field `file.Ext.header_bytes` would be populated if the file had content and reveals the magic bytes immediately.
+
+
+## EID 12 RegistryEvent (Object create and delete)
+EID 12 fires on registry key and value create/delete operations. Sysmon hooks the registry callback via CmRegisterCallback at the kernel level. Elastic Defend captures registry events via `endpoint.events.registry` with `event.action: creation` or `event.action: deletion`. 
+
+### Event Generation
+```
+Had to remove <EventType condition="is">CreateKey</EventType> from Exclude
+Then just New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run\TestKey" -Force
+```
+
+### Field Comparision
+| Sysmon Rule Field | Sysmon Log Field | Elastic Defend Field | Comment |
+|---|---|---|---|
+| `RuleName` | `rule.name` | `-` | Sysmon: `-` (no named rule matched) |
+| `EventType` | `winlog.event_data.EventType` | `event.action` | Sysmon: `CreateKey` / `DeleteKey`. EDR: `creation` / `deletion` when registry collection enabled |
+| `UtcTime` | `@timestamp` | `@timestamp` | Both equivalent |
+| `ProcessGuid` | `process.entity_id` | `process.entity_id` | Different formats — Sysmon `{GUID}`, EDR opaque string |
+| `ProcessId` | `process.pid` | `process.pid` | Both: `10852` |
+| `Image` | `process.executable` | `process.executable` | Both: `powershell.exe` |
+| `TargetObject` | `registry.path` | `registry.path` | Sysmon: `HKU\S-1-5-21-...\Software\Microsoft\Windows\CurrentVersion\Run\TestKey`. EDR expected equivalent |
+| `-` | `registry.hive` | `registry.hive` | ECS split from path — `HKU` |
+| `-` | `registry.key` | `registry.key` | Path without hive prefix |
+| `-` | `registry.value` | `registry.value` | Key name component — `TestKey` |
+| `User` | `user.name` + `user.domain` | `user.name` + `user.domain` | Both present. Sysmon also has `winlog.user.identifier` (SYSTEM SID) and `user.id` |
+| `-` | `-` | `process.code_signature.*` | EDR only — signing status of the process touching the registry |
+| `-` | `-` | `process.parent.pid` | EDR only |
+| `-` | `-` | `process.thread.id` | EDR only |
+| `-` | `winlog.record_id` | `-` | Sysmon only — Windows event log sequence number |
+| `-` | `winlog.process.pid` / `winlog.process.thread.id` | `-` | Sysmon only — Sysmon service process context |
+
+
+## Elastic EDR Advanced Settings
+# Elastic Defend Advanced Settings Reference
+
+## Windows
+
+### Agent & Connectivity
+| Setting | Min Version | Notes |
+|---|---|---|
+| `windows.advanced.agent.connection_delay` | 7.9+ | |
+| `windows.advanced.agent.orphaned_remediation` | 9.2+ | |
+
+### Artifacts
+| Setting | Min Version |
+|---|---|
+| `windows.advanced.artifacts.global.base_url` | 7.9+ |
+| `windows.advanced.artifacts.global.manifest_relative_url` | 7.9+ |
+| `windows.advanced.artifacts.global.public_key` | 7.9+ |
+| `windows.advanced.artifacts.global.interval` | 7.9+ |
+| `windows.advanced.artifacts.global.channel` | 8.18+ |
+| `windows.advanced.artifacts.global.ca_cert` | 7.9+ |
+| `windows.advanced.artifacts.global.proxy_url` | 8.8+ |
+| `windows.advanced.artifacts.global.proxy_disable` | 8.8+ |
+| `windows.advanced.artifacts.user.public_key` | 7.9+ |
+| `windows.advanced.artifacts.user.ca_cert` | 7.9+ |
+| `windows.advanced.artifacts.user.proxy_url` | 8.8+ |
+| `windows.advanced.artifacts.user.proxy_disable` | 8.8+ |
+
+### Elasticsearch
+| Setting | Min Version |
+|---|---|
+| `windows.advanced.elasticsearch.delay` | 7.9+ |
+| `windows.advanced.elasticsearch.tls.verify_peer` | 7.9+ |
+| `windows.advanced.elasticsearch.tls.verify_hostname` | 7.9+ |
+| `windows.advanced.elasticsearch.tls.ca_cert` | 7.9+ |
+
+### Logging & Diagnostics
+| Setting | Min Version |
+|---|---|
+| `windows.advanced.logging.file` | 7.11+ |
+| `windows.advanced.logging.debugview` | 7.11+ |
+| `windows.advanced.diagnostic.enabled` | 7.11+ |
+| `windows.advanced.diagnostic.rollback_telemetry_enabled` | 8.1+ |
+
+### Malware
+| Setting | Min Version |
+|---|---|
+| `windows.advanced.malware.quarantine` | 7.9+ |
+| `windows.advanced.malware.threshold` | 7.11+ |
+| `windows.advanced.malware.max_file_size_bytes` | 8.16.4+ |
+| `windows.advanced.malware.networkshare` | 8.9+ |
+
+### Ransomware
+| Setting | Min Version |
+|---|---|
+| `windows.advanced.ransomware.mbr` | 7.12+ |
+| `windows.advanced.ransomware.canary` | 7.14+ |
+| `windows.advanced.ransomware.dump_process` | 8.11+ |
+
+### Memory Protection
+| Setting | Min Version |
+|---|---|
+| `windows.advanced.memory_protection.shellcode` | 7.15+ |
+| `windows.advanced.memory_protection.memory_scan` | 7.15+ |
+| `windows.advanced.memory_protection.shellcode_collect_sample` | 7.15+ |
+| `windows.advanced.memory_protection.memory_scan_collect_sample` | 7.15+ |
+| `windows.advanced.memory_protection.shellcode_enhanced_pe_parsing` | 7.15+ |
+| `windows.advanced.memory_protection.shellcode_trampoline_detection` | 8.1+ |
+| `windows.advanced.memory_protection.context_manipulation_detection` | 8.4+ |
+| `windows.advanced.memory_protection.scan_on_network_event` | 8.17.6+ |
+| `windows.advanced.memory_protection.scan_on_api_event` | 8.17.6+ |
+| `windows.advanced.memory_protection.scan_on_image_load_event` | 8.17.6+ |
+
+### Kernel
+| Setting | Min Version |
+|---|---|
+| `windows.advanced.kernel.connect` | 7.9+ |
+| `windows.advanced.kernel.process` | 7.9+ |
+| `windows.advanced.kernel.filewrite` | 7.9+ |
+| `windows.advanced.kernel.filewrite_sync` | 8.14+ |
+| `windows.advanced.kernel.network` | 7.9+ |
+| `windows.advanced.kernel.network_report_loopback` | 8.15+ |
+| `windows.advanced.kernel.fileopen` | 7.9+ |
+| `windows.advanced.kernel.asyncimageload` | 7.9+ |
+| `windows.advanced.kernel.syncimageload` | 7.9+ |
+| `windows.advanced.kernel.registry` | 7.9+ |
+| `windows.advanced.kernel.fileaccess` | 7.15+ |
+| `windows.advanced.kernel.registryaccess` | 7.15+ |
+| `windows.advanced.kernel.process_handle` | 8.1+ |
+| `windows.advanced.kernel.image_and_process_file_timestamp` | 8.4+ |
+| `windows.advanced.kernel.ppl.harden_images` | 8.9+ |
+| `windows.advanced.kernel.ppl.harden_am_images` | 8.9+ |
+| `windows.advanced.kernel.dev_drives.harden` | 8.16+ |
+
+### Events — Collection & Callstacks
+| Setting | Min Version | Notes |
+|---|---|---|
+| `windows.advanced.events.etw` | 8.1+ | ETW provider opt-in |
+| `windows.advanced.events.api` | 8.8+ | API event collection |
+| `windows.advanced.events.api_disabled` | 8.11+ | |
+| `windows.advanced.events.api_verbose` | 8.11+ | |
+| `windows.advanced.events.callstacks.emit_in_events` | 8.8+ | Attach callstacks to raw events |
+| `windows.advanced.events.callstacks.process` | 8.8+ | Callstacks on process events |
+| `windows.advanced.events.callstacks.image_load` | 8.8+ | Callstacks on DLL load events |
+| `windows.advanced.events.callstacks.file` | 8.8+ | Callstacks on file events |
+| `windows.advanced.events.callstacks.registry` | 8.8+ | Callstacks on registry events |
+| `windows.advanced.events.callstacks.timeout_microseconds` | 8.12+ | |
+| `windows.advanced.events.callstacks.use_hardware` | 8.16+ | |
+| `windows.advanced.events.callstacks.exclude_hotpatch_extension_pages` | 8.15.2+ | |
+| `windows.advanced.events.callstacks.include_network_images` | 8.9+ | |
+| `windows.advanced.events.check_debug_registers` | 8.11+ | |
+| `windows.advanced.events.process_ancestry_length` | 8.15+ | |
+| `windows.advanced.events.ancestry_in_all_events` | 8.15+ | Inject ancestry into every event type |
+| `windows.advanced.events.aggregate_process` | 8.16+ | |
+| `windows.advanced.events.aggregate_network` | 8.18+ | |
+| `windows.advanced.events.deduplicate_network_events` | 8.15+ | |
+| `windows.advanced.events.deduplicate_network_events_below_bytes` | 8.15+ | |
+| `windows.advanced.events.network_events_exclude_local` | 8.10.1+ | |
+| `windows.advanced.events.capture_command_line` | 8.14+ | |
+| `windows.advanced.events.enforce_registry_filters` | 8.15+ | |
+| `windows.advanced.events.disable_registry_write_suppression` | 8.12.1+ | |
+| `windows.advanced.events.disable_image_load_suppression_cache` | 8.12.1+ | |
+| `windows.advanced.events.process.creation_flags` | 8.13+ | |
+| `windows.advanced.events.process.origin_info_collection` | 8.19+ | |
+| `windows.advanced.events.memory_scan` | 8.14+ | |
+| `windows.advanced.events.event_on_access.file_paths` | 8.15+ | |
+| `windows.advanced.events.event_on_access.registry_paths` | 8.15+ | Targeted registry path monitoring |
+| `windows.advanced.events.image_load.origin_info_collection` | 8.19+ | |
+| `windows.advanced.events.file.origin_info_collection` | 8.19+ | |
+| `windows.advanced.events.file.max_hash_size_mb` | 8.16+ | |
+| `windows.advanced.events.security.provider_etw` | 8.19+ | |
+| `windows.advanced.events.security.event_disabled` | 9.2+ | |
+
+### Hashing
+| Setting | Min Version |
+|---|---|
+| `windows.advanced.events.hash.md5` | 8.16+ |
+| `windows.advanced.events.hash.sha1` | 8.16+ |
+| `windows.advanced.events.hash.sha256` | 8.16+ |
+| `windows.advanced.alerts.hash.md5` | 8.16+ |
+| `windows.advanced.alerts.hash.sha1` | 8.16+ |
+
+### Alerts
+| Setting | Min Version |
+|---|---|
+| `windows.advanced.alerts.cloud_lookup` | 7.12+ |
+| `windows.advanced.alerts.rollback.self_healing.registry_enabled` | 8.8+ |
+| `windows.advanced.alerts.sample_collection` | 8.13+ |
+
+### Mitigations & Protection
+| Setting | Min Version |
+|---|---|
+| `windows.advanced.mitigations.policies.redirection_guard` | 9.3+ |
+| `windows.advanced.firewall_anti_tamper` | 9.2+ |
+| `windows.advanced.device_control.filter_images` | 9.2+ |
+| `windows.advanced.harden_images` | — |
+
+### Misc
+| Setting | Min Version |
+|---|---|
+| `windows.advanced.allow_cloud_features` | 8.18+ |
+| `windows.advanced.utilization_limits.cpu` | 8.3+ |
+| `windows.advanced.utilization_limits.resident_memory_target_mb` | 8.12+ |
+| `windows.advanced.utilization_limits.free_disk_space_gb` | 9.3+ |
+| `windows.advanced.utilization_limits.free_disk_space_percent` | 9.3+ |
+| `windows.advanced.event_filter.default` | 8.3+ |
+| `windows.advanced.document_enrichment.fields` | 8.11+ |
+| `windows.advanced.set_extended_host_information` | 8.16+ |
+| `windows.advanced.flags` | 8.13+ |
+| `windows.advanced.response_actions.get_file.max_parallel_uploads` | 9.3+ |
+| `windows.advanced.response_actions.get_file.upload_streams_count` | 9.3+ |
+
+---
+
+## macOS
+
+### Agent & Connectivity
+| Setting | Min Version |
+|---|---|
+| `mac.advanced.agent.connection_delay` | 7.9+ |
+| `mac.advanced.agent.orphaned_remediation` | 9.2+ |
+
+### Artifacts
+| Setting | Min Version |
+|---|---|
+| `mac.advanced.artifacts.global.base_url` | 7.9+ |
+| `mac.advanced.artifacts.global.manifest_relative_url` | 7.9+ |
+| `mac.advanced.artifacts.global.public_key` | 7.9+ |
+| `mac.advanced.artifacts.global.interval` | 7.9+ |
+| `mac.advanced.artifacts.global.channel` | 8.18+ |
+| `mac.advanced.artifacts.global.ca_cert` | 7.9+ |
+| `mac.advanced.artifacts.global.proxy_url` | 8.8+ |
+| `mac.advanced.artifacts.global.proxy_disable` | 8.8+ |
+| `mac.advanced.artifacts.user.public_key` | 7.9+ |
+| `mac.advanced.artifacts.user.ca_cert` | 7.9+ |
+| `mac.advanced.artifacts.user.proxy_url` | 8.8+ |
+| `mac.advanced.artifacts.user.proxy_disable` | 8.8+ |
+
+### Elasticsearch
+| Setting | Min Version |
+|---|---|
+| `mac.advanced.elasticsearch.delay` | 7.9+ |
+| `mac.advanced.elasticsearch.tls.verify_peer` | 7.9+ |
+| `mac.advanced.elasticsearch.tls.verify_hostname` | 7.9+ |
+| `mac.advanced.elasticsearch.tls.ca_cert` | 7.9+ |
+
+### Logging & Diagnostics
+| Setting | Min Version |
+|---|---|
+| `mac.advanced.logging.file` | 7.11+ |
+| `mac.advanced.logging.syslog` | 7.11+ |
+| `mac.advanced.diagnostic.enabled` | 7.12+ |
+
+### Malware
+| Setting | Min Version |
+|---|---|
+| `mac.advanced.malware.quarantine` | 7.9+ |
+| `mac.advanced.malware.threshold` | 7.11+ |
+| `mac.advanced.malware.max_file_size_bytes` | 8.16.4+ |
+
+### Ransomware
+| Setting | Min Version |
+|---|---|
+| `mac.advanced.ransomware.diagnostic` | 9.2+ |
+
+### Memory Protection
+| Setting | Min Version |
+|---|---|
+| `mac.advanced.memory_protection.memory_scan` | 7.16+ |
+| `mac.advanced.memory_protection.memory_scan_collect_sample` | 7.16+ |
+| `mac.advanced.memory_protection.scan_on_network_event` | 8.17.6+ |
+
+### Kernel
+| Setting | Min Version |
+|---|---|
+| `mac.advanced.kernel.connect` | 7.9+ |
+| `mac.advanced.kernel.process` | 7.9+ |
+| `mac.advanced.kernel.filewrite` | 7.9+ |
+| `mac.advanced.kernel.network` | 7.9+ |
+| `mac.advanced.kernel.fileaccess` | 8.11+ |
+| `mac.advanced.kernel.harden.self_protect` | 7.11+ |
+| `mac.advanced.kernel.network_extension.enable_content_filtering` | 8.1+ |
+| `mac.advanced.kernel.network_extension.enable_packet_filtering` | 8.1+ |
+
+### Events
+| Setting | Min Version |
+|---|---|
+| `mac.advanced.events.populate_file_data` | 9.2+ |
+| `mac.advanced.events.process_ancestry_length` | 8.15+ |
+| `mac.advanced.events.ancestry_in_all_events` | 8.15+ |
+| `mac.advanced.events.aggregate_process` | 8.16+ |
+| `mac.advanced.events.aggregate_network` | 8.18+ |
+| `mac.advanced.events.deduplicate_network_events` | 8.15+ |
+| `mac.advanced.events.deduplicate_network_events_below_bytes` | 8.15+ |
+| `mac.advanced.events.network_events_exclude_local` | 8.10.1+ |
+| `mac.advanced.events.capture_command_line` | 8.14+ |
+| `mac.advanced.events.capture_env_vars` | 8.7+ |
+| `mac.advanced.events.image_load` | 8.11+ |
+| `mac.advanced.events.event_on_access.file_paths` | 8.15+ |
+| `mac.advanced.events.file.max_hash_size_mb` | 8.16+ |
+| `mac.advanced.events.script_capture` | 9.3+ |
+| `mac.advanced.events.script_max_size` | 9.3+ |
+
+### Image Load
+| Setting | Min Version |
+|---|---|
+| `mac.advanced.image_load.capture` | 8.11+ |
+
+### Hashing
+| Setting | Min Version |
+|---|---|
+| `mac.advanced.events.hash.md5` | 8.16+ |
+| `mac.advanced.events.hash.sha1` | 8.16+ |
+| `mac.advanced.events.hash.sha256` | 8.16+ |
+| `mac.advanced.alerts.hash.md5` | 8.16+ |
+| `mac.advanced.alerts.hash.sha1` | 8.16+ |
+
+### Alerts
+| Setting | Min Version |
+|---|---|
+| `mac.advanced.alerts.cloud_lookup` | 7.12+ |
+| `mac.advanced.alerts.sample_collection` | 8.13+ |
+
+### Misc
+| Setting | Min Version |
+|---|---|
+| `mac.advanced.allow_cloud_features` | 8.18+ |
+| `mac.advanced.event_filter.default` | 8.3+ |
+| `mac.advanced.document_enrichment.fields` | 8.11+ |
+| `mac.advanced.set_extended_host_information` | 8.16+ |
+| `mac.advanced.flags` | 8.16+ |
+| `mac.advanced.device_control.filter_images` | 9.2+ |
+| `mac.advanced.utilization_limits.free_disk_space_gb` | 9.3+ |
+| `mac.advanced.utilization_limits.free_disk_space_percent` | 9.3+ |
+| `mac.advanced.response_actions.get_file.max_parallel_uploads` | 9.3+ |
+| `mac.advanced.response_actions.get_file.upload_streams_count` | 9.3+ |
+| `mac.advanced.file_cache.file_object_cache_size` | 8.12+ |
+
+---
+
+## Linux
+
+### Agent & Connectivity
+| Setting | Min Version |
+|---|---|
+| `linux.advanced.agent.connection_delay` | 7.9+ |
+| `linux.advanced.agent.orphaned_remediation` | 9.2+ |
+
+### Artifacts
+| Setting | Min Version |
+|---|---|
+| `linux.advanced.artifacts.global.base_url` | 7.9+ |
+| `linux.advanced.artifacts.global.manifest_relative_url` | 7.9+ |
+| `linux.advanced.artifacts.global.public_key` | 7.9+ |
+| `linux.advanced.artifacts.global.interval` | 7.9+ |
+| `linux.advanced.artifacts.global.channel` | 8.18+ |
+| `linux.advanced.artifacts.global.ca_cert` | 7.9+ |
+| `linux.advanced.artifacts.global.proxy_url` | 8.8+ |
+| `linux.advanced.artifacts.global.proxy_disable` | 8.8+ |
+| `linux.advanced.artifacts.user.public_key` | 7.9+ |
+| `linux.advanced.artifacts.user.ca_cert` | 7.9+ |
+| `linux.advanced.artifacts.user.proxy_url` | 8.8+ |
+| `linux.advanced.artifacts.user.proxy_disable` | 8.8+ |
+
+### Elasticsearch
+| Setting | Min Version |
+|---|---|
+| `linux.advanced.elasticsearch.delay` | 7.9+ |
+| `linux.advanced.elasticsearch.tls.verify_peer` | 7.9+ |
+| `linux.advanced.elasticsearch.tls.verify_hostname` | 7.9+ |
+| `linux.advanced.elasticsearch.tls.ca_cert` | 7.9+ |
+
+### Logging & Diagnostics
+| Setting | Min Version |
+|---|---|
+| `linux.advanced.logging.file` | 7.11+ |
+| `linux.advanced.logging.syslog` | 7.11+ |
+| `linux.advanced.diagnostic.enabled` | 7.12+ |
+
+### Malware
+| Setting | Min Version |
+|---|---|
+| `linux.advanced.malware.quarantine` | 7.14+ |
+| `linux.advanced.malware.max_file_size_bytes` | 8.16.4+ |
+
+### Ransomware
+| Setting | Min Version |
+|---|---|
+| `linux.advanced.ransomware.diagnostic` | 9.4+ |
+
+### Memory Protection
+| Setting | Min Version |
+|---|---|
+| `linux.advanced.memory_protection.memory_scan` | 7.16+ |
+| `linux.advanced.memory_protection.memory_scan_collect_sample` | 7.16+ |
+| `linux.advanced.memory_protection.enable_fork_scan` | 8.14+ |
+| `linux.advanced.memory_protection.enable_shared_dirty_scan` | 8.14+ |
+| `linux.advanced.memory_protection.scan_on_network_event` | 8.17.6+ |
+
+### Kernel & fanotify
+| Setting | Min Version |
+|---|---|
+| `linux.advanced.kernel.capture_mode` | 8.2+ |
+| `linux.advanced.fanotify.ignore_unknown_filesystems` | 8.4+ |
+| `linux.advanced.fanotify.monitored_filesystems` | 8.4+ |
+| `linux.advanced.fanotify.ignored_filesystems` | 8.4+ |
+| `linux.advanced.fanotify.seccomp_restricted` | 8.13.1+ |
+| `linux.advanced.fanotify.enable_ns_jumping` | 9.3+ |
+
+### Events
+| Setting | Min Version |
+|---|---|
+| `linux.advanced.events.populate_file_data` | 9.3+ |
+| `linux.advanced.events.process_ancestry_length` | 8.15+ |
+| `linux.advanced.events.ancestry_in_all_events` | 8.15+ |
+| `linux.advanced.events.aggregate_process` | 8.16+ |
+| `linux.advanced.events.aggregate_network` | 8.18+ |
+| `linux.advanced.events.deduplicate_network_events` | 8.15+ |
+| `linux.advanced.events.deduplicate_network_events_below_bytes` | 8.15+ |
+| `linux.advanced.events.network_events_exclude_local` | 8.10.1+ |
+| `linux.advanced.events.capture_command_line` | 8.14+ |
+| `linux.advanced.capture_env_vars` | 8.6+ |
+| `linux.advanced.events.disable_fd_kprobes` | 8.8+ |
+| `linux.advanced.events.enable_caps` | 8.14+ |
+| `linux.advanced.events.file.max_hash_size_mb` | 8.16+ |
+| `linux.advanced.host_isolation.allowed` | 8.6.1+ |
+
+### TTY / Session
+| Setting | Min Version |
+|---|---|
+| `linux.advanced.tty_io.max_kilobytes_per_process` | 8.5+ |
+| `linux.advanced.tty_io.max_kilobytes_per_event` | 8.5+ |
+| `linux.advanced.tty_io.max_event_interval_seconds` | 8.5+ |
+
+### Hashing
+| Setting | Min Version |
+|---|---|
+| `linux.advanced.events.hash.md5` | 8.16+ |
+| `linux.advanced.events.hash.sha1` | 8.16+ |
+| `linux.advanced.events.hash.sha256` | 8.16+ |
+| `linux.advanced.alerts.hash.md5` | 8.16+ |
+| `linux.advanced.alerts.hash.sha1` | 8.16+ |
+
+### Alerts
+| Setting | Min Version |
+|---|---|
+| `linux.advanced.alerts.sample_collection` | 8.13+ |
+
+### Misc
+| Setting | Min Version |
+|---|---|
+| `linux.advanced.allow_cloud_features` | 8.18+ |
+| `linux.advanced.event_filter.default` | 8.3+ |
+| `linux.advanced.document_enrichment.fields` | 8.11+ |
+| `linux.advanced.set_extended_host_information` | 8.16+ |
+| `linux.advanced.flags` | 8.16+ |
+| `linux.advanced.utilization_limits.cpu` | 8.3+ |
+| `linux.advanced.utilization_limits.free_disk_space_gb` | 9.3+ |
+| `linux.advanced.utilization_limits.free_disk_space_percent` | 9.3+ |
+| `linux.advanced.file_cache.file_object_cache_size` | 8.12+ |
+| `linux.advanced.response_actions.get_file.max_parallel_uploads` | 9.3+ |
+| `linux.advanced.response_actions.get_file.upload_streams_count` | 9.3+ |
+| `linux.advanced.memory_protection.scan_on_network_event` | 8.17.6+ |
