@@ -240,3 +240,43 @@ Identify any normal process which loads a dll file, for example MicrosoftEdgeUpd
 ### Analysis
 Core fields are well covered in both agents. The Sysmon advantage here is the three PE metadata fields Description, Product, and Company that are absent from EDR. These are valuable for detecting suspicious DLL behaviors. EDR compensates with richer context around the loading process `process.code_signature.*` and DLL file age `relative_file_creation_time`.
 Also the `process.uptime: 0` field that checks when the DLL was loaded, at process startup or injected later which is useful for distinguishing legitimate load-time linking from runtime injection.
+
+
+## EID 8 CreateRemoteThread
+EID 8 fires when a process creates a thread in another process via CreateRemoteThread in kernel32.dll and is the Win32 API surface or NtCreateThreadEx via ntdll.dll which is the native NT API one layer below Win32, directly at the syscall boundary. Sysmon hooks the kernel thread creation callback and compares source vs target process to identify cross-process thread creation. It registers a kernel callback via PsSetCreateThreadNotifyRoutine which fires at the kernel level regardless of which user-mode API was used. Elastic Defend captures this via endpoint.events.process with event.action: remote_thread.
+
+### Event Generation
+```
+Compile and run t1_classic_crt.cpp
+```
+
+### Field Comparision
+| Sysmon Rule Field | Sysmon Log Field | Elastic Defend Field | Comment |
+|---|---|---|---|
+| `RuleName` | `rule.name` | `-` | No equivalent in EDR |
+| `UtcTime` | `@timestamp` | `@timestamp` | |
+| `SourceProcessGuid` | `process.entity_id` | `process.entity_id` | Source (injecting) process. Different format: Sysmon uses `{GUID}`, Elastic uses opaque string |
+| `SourceProcessId` | `process.pid` | `process.pid` | Both injecting process |
+| `SourceImage` | `process.executable` | `process.executable` | Both injecting process |
+| `SourceUser` | `winlog.event_data.SourceUser` | `user.name` | |
+| `TargetProcessGuid` | `winlog.event_data.TargetProcessGUID` | `Target.process.entity_id` | EDR uses dedicated `Target.*` namespace |
+| `TargetProcessId` | `winlog.event_data.TargetProcessId` | `Target.process.pid` | |
+| `TargetImage` | `winlog.event_data.TargetImage` | `Target.process.executable` | |
+| `TargetUser` | `winlog.event_data.TargetUser` | `-` | Not a field in EDR api events |
+| `NewThreadId` | `winlog.event_data.NewThreadId` | `-` | No thread ID captured in EDR |
+| `StartAddress` | `winlog.event_data.StartAddress` | `process.Ext.api.parameters.address` | |
+| `StartModule` | `-` | `process.Ext.api.metadata.target_address_name` | Sysmon: `-` (unbacked no module resolved). EDR: `Unbacked` explicitly labeled |
+| `StartFunction` | `-` | `-` | Sysmon: `-` (unbacked). EDR has no function name either |
+| `-` | `-` | `process.Ext.api.name` | EDR only actual API called: `VirtualAllocEx` / `WriteProcessMemory` |
+| `-` | `-` | `process.Ext.api.summary` | EDR only human readable summary e.g. `VirtualAllocEx( Notepad.exe, NULL, 0x1f8, COMMIT\|RESERVE, RWX )` |
+| `-` | `-` | `process.Ext.api.behaviors` | EDR only `cross-process`, `image_indirect_call` behavioral classification of the API call |
+| `-` | `-` | `process.Ext.api.parameters.protection` | EDR only `RWX` memory protection on allocation |
+| `-` | `-` | `process.Ext.api.parameters.size` | EDR only bytes allocated/written |
+| `-` | `-` | `process.Ext.api.parameters.allocation_type` | EDR only `COMMIT\|RESERVE` |
+| `-` | `-` | `process.code_signature.exists` | EDR only  `false` injecting binary is unsigned |
+| `-` | `-` | `Target.process.Ext.created_suspended` | EDR only `true` on target process |
+| `-` | `-` | `Target.process.Ext.token.integrity_level_name` | EDR only integrity level of target process |
+| `-` | `-` | `event.provider` | EDR only `Microsoft-Windows-Threat-Intelligence` |
+
+### Analysis
+Sysmon gives one summarized event at the CreateRemoteThread call. EDR takes a different approach and hooks the ETWTI (ETW Threat Intelligence) provider level and captures every individual API call in the injection chain as a separate events, giving VirtualAllocEx → WriteProcessMemory → CreateRemoteThread as a sequence. EDR captures richer context about the process injection while Sysmon tracks the `NewThreadId` field which could be used for correlating subsequent thread activity.
