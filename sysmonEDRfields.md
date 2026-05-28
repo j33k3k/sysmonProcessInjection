@@ -121,7 +121,7 @@ Sysmon EID 3 fires on every outbound and inbound TCP/UDP connection, hooking at 
 Core network fields are fully equivalent between both sensors IP, port, transport, and direction are all present. EDR is meaningfully richer in two areas GeoIP enrichment and ASN data. The field `process.uptime` is an EDR exclusive field useful for detecting beaconing from freshly spawned processes. 
 
 
-## EID 4 SKIPPED
+## EID 4 **SKIPPED**
 
 ## EID 5 Process Terminated 
 EID 5 fires when any process exits, hooking the same PsSetCreateProcessNotifyRoutineEx callback as EID 1 but on the exit path. Elastic Defend generates a matching process event with event.action: end
@@ -590,11 +590,10 @@ Set-Content -Path "C:\Temp\legit.exe:payload.ps1" -Value $payload
 | `-` | `winlog.record_id` | `-` | Sysmon only |
 
 ### Analysis
-Both detect the ADS creation but Sysmon's advantage is `winlog.event_data.Contents`, which captures the raw stream content. Also the Zone.Identifier which was absent in this lab and would need to correlate EDR `endpoint.events.network` to find what url for example powershell.exe attempted connection to.
+Both detect the ADS creation but Sysmon's advantage is `winlog.event_data.Contents`, which captures the raw stream content. Also Sysmon `Zone.Identifier` which was abscent in this lab but is very useful, would need to correlate EDR `endpoint.events.network` to find what url for example powershell.exe attempted connection to.
 
 
-
-
+## EID 16 ServiceConfigurationChange **SKIPPED**
 
 
 
