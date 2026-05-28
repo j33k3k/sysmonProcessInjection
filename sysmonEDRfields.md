@@ -370,19 +370,19 @@ Compile and run t1_classic_crt.cpp
 | `process.hash.sha256` | present | present | present | |
 | `process.pe.imphash` | `-` | `-` | `a7699f9ee3ea2fd5d8a19510b0ebfa15` | |
 | `process.exit_code` | `-` | `-` | `1` | Non-zero = abnormal exit |
-| `process.code_signature.exists` | `-` | `false` | `false` | Unsigned injecting binary — high signal |
+| `process.code_signature.exists` | `-` | `false` | `false` | Unsigned injecting binary |
 | `process.code_signature.status` | `-` | `""` | `""` | Empty = no signature |
 | `process.parent.executable` | `services.exe` | `cmd.exe` | `cmd.exe` | |
 | `process.thread.id` | `4724` | `4208` | `19272` | Thread performing injection |
 | `process.thread.Ext.start_address` | `2361273606784` | `-` | `-` | Only on shellcode_thread |
 | `process.thread.Ext.start_address_module` | `Unbacked` | `-` | `-` | Confirms shellcode thread start |
-| `process.thread.Ext.start_address_bytes` | `40534883ec20...` | `-` | `-` | Raw bytes — usable for YARA/vGrep hunting |
+| `process.thread.Ext.start_address_bytes` | `40534883ec20...` | `-` | `-` | Raw bytes usable for YARA/vGrep hunting |
 | `process.thread.Ext.start_address_bytes_disasm` | `push rbx; sub rsp, 0x20...` | `-` | `-` | Disassembly of shellcode entry point |
 | `process.thread.Ext.call_stack_summary` | `ntdll.dll` | `ntdll.dll\|kernelbase.dll\|elastic-agent...\|kernel32.dll\|ntdll.dll` | `ntdll.dll\|kernelbase.dll\|elastic-agent...\|kernel32.dll\|ntdll.dll` | Compact call stack |
 | `process.thread.Ext.call_stack[].symbol_info` | `ntdll.dll!NtCreateThreadEx+0x14`, `kernelbase.dll!CreateRemoteThreadEx+0x29f`, `Unbacked!0x...` (multiple) | `ntdll.dll!NtWriteVirtualMemory+0x14`, `kernelbase.dll!WriteProcessMemory+0xde`, `elastic-agent...+0x4a862` | `ntdll.dll!NtAllocateVirtualMemory+0x14`, `kernelbase.dll!VirtualAllocEx+0x43`, `elastic-agent...+0x4a862` | Full resolved call stack per frame |
 | `process.thread.Ext.call_stack[].module_path` | `ntdll.dll`, `kernelbase.dll`, `kernel32.dll`, `Unbacked` (multiple) | present | present | `Unbacked` frames = shellcode |
 | `process.thread.Ext.call_stack[].memory_section.protection` | `R-X`, `RWX` | present | present | `RWX` = shellcode memory |
-| `process.thread.Ext.call_stack_final_user_module.name` | `-` | `elastic-agent-9.3.2-windows-x86_64.exe` | `elastic-agent-9.3.2-windows-x86_64.exe` | Last non-system module — identifies injector |
+| `process.thread.Ext.call_stack_final_user_module.name` | `-` | `elastic-agent-9.3.2-windows-x86_64.exe` | `elastic-agent-9.3.2-windows-x86_64.exe` | Last non-system module identifies injector |
 | `process.thread.Ext.call_stack_final_user_module.path` | `-` | `c:\programdata\elastic-agent...` | `c:\programdata\elastic-agent...` | |
 | `process.thread.Ext.call_stack_final_user_module.hash.sha256` | `-` | present | present | Hash of injecting binary |
 | `process.thread.Ext.call_stack_final_user_module.code_signature.exists` | `-` | `false` | `false` | |
@@ -403,17 +403,17 @@ Compile and run t1_classic_crt.cpp
 | `Target.process.executable` | `svchost.exe` | `svchost.exe` | `svchost.exe` | Target (injected) process |
 | `Target.process.pid` | `3100` | `28572` | `14808` | |
 | `Target.process.entity_id` | present | present | present | |
-| `Target.process.Ext.created_suspended` | `true` | `true` | `true` | Process was created suspended — classic hollow/doppelgang precursor |
+| `Target.process.Ext.created_suspended` | `true` | `true` | `true` | Process was created suspended |
 | `Target.process.Ext.token.integrity_level_name` | `system` | `high` | `high` | |
-| `Target.process.Ext.memory_region.region_protection` | `RWX` | `RWX` | `RWX` | Memory region is executable — shellcode indicator |
+| `Target.process.Ext.memory_region.region_protection` | `RWX` | `RWX` | `RWX` | Memory region is executable |
 | `Target.process.Ext.memory_region.allocation_type` | `PRIVATE` | `PRIVATE` | `PRIVATE` | Not file-backed |
 | `Target.process.Ext.memory_region.allocation_protection` | `RWX` | `RWX` | `RWX` | |
 | `Target.process.Ext.memory_region.memory_pe_detected` | `true` | `true` | `true` | PE structure detected in injected memory |
-| `Target.process.Ext.memory_region.memory_pe.imphash` | `7730ae4afeef9e61ef5f5446791afdff` | `7730ae4afeef9e61ef5f5446791afdff` | `7730ae4afeef9e61ef5f5446791afdff` | Same imphash across all three — same payload |
+| `Target.process.Ext.memory_region.memory_pe.imphash` | `7730ae4afeef9e61ef5f5446791afdff` | `7730ae4afeef9e61ef5f5446791afdff` | `7730ae4afeef9e61ef5f5446791afdff` | Same imphash across all three —same payload |
 | `Target.process.Ext.memory_region.hash.sha256` | `-` | present | present | Hash of injected content |
 | `Target.process.Ext.memory_region.region_size` | `311296` | `770048` | `770048` | |
 | `Target.process.Ext.memory_region.allocation_size` | `786432` | `770048` | `770048` | |
-| `Target.process.Ext.memory_region.strings` | extensive list | extensive list | extensive list | Strings extracted from injected memory — highest value for threat intel and IOC extraction |
+| `Target.process.Ext.memory_region.strings` | extensive list | extensive list | extensive list | Strings extracted from injected memory highest value for threat intel and IOC extraction |
 | `Target.process.Ext.memory_region.bytes_address` | present | present | present | Base address of injected region |
 | `Target.process.Ext.memory_region.region_state` | `COMMIT` | `COMMIT` | `COMMIT` | |
 | `Target.process.Ext.dll.*` | full DLL list | `-` | `-` | Loaded modules in target process |
@@ -427,8 +427,6 @@ Compile and run t1_classic_crt.cpp
 | `Responses[].process.name` | `svchost.exe` | injector + target | injector only | Which processes were killed |
 | `Responses[].result` | `0` (success) | `0` (success) | `0` (success) | |
 | `Endpoint.policy.applied.name` | present | present | present | Policy that triggered prevention |
-| `kibana.alert.workflow_status` | `closed` | `closed` | `closed` | |
-| `kibana.alert.workflow_reason` | `benign_positive` | `true_positive` | `false_positive` | Analyst verdict |
 
 ### Analysis
 The two most critical gaps in EDR for EID 10 are GrantedAccess and CallTrace where both are absent from endpoint.events.api and instead replaced with other `process.Ext.api.*` fields. However, this is just the raw events without any EDR behaviour module enabled which provides richer and more contextual alert fields, see example above.
