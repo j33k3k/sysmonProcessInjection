@@ -465,7 +465,7 @@ Core fields are equivalent on both sides. The meaningful EDR advantages are `fil
 
 
 ## EID 12 RegistryEvent (Object create and delete)
-EID 12 fires on registry key and value create/delete operations. Sysmon hooks the registry callback via CmRegisterCallback at the kernel level. Elastic Defend captures registry events via `endpoint.events.registry` with `event.action: creation` or `event.action: deletion`. 
+EID 12 fires on registry key and value create/delete operations. By default Olaf Hartong Sysmon configuration excludes on create operations. Sysmon hooks the registry callback via CmRegisterCallback at the kernel level. Elastic Defend captures registry events via `endpoint.events.registry` with `event.action: modification` or `event.action: query`. Additional Registry events can we enabled in Advanced Settings with `windows.advanced.events.event_on_access.registry_paths` and `windows.advanced.events.enforce_registry_filters` but are disabled by default.
 
 ### Event Generation
 ```
@@ -476,22 +476,91 @@ Then just New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run\Te
 ### Field Comparision
 | Sysmon Rule Field | Sysmon Log Field | Elastic Defend Field | Comment |
 |---|---|---|---|
-| `RuleName` | `rule.name` | `-` | Sysmon: `-` (no named rule matched) |
-| `EventType` | `winlog.event_data.EventType` | `event.action` | Sysmon: `CreateKey` / `DeleteKey`. EDR: `creation` / `deletion` when registry collection enabled |
-| `UtcTime` | `@timestamp` | `@timestamp` | Both equivalent |
-| `ProcessGuid` | `process.entity_id` | `process.entity_id` | Different formats — Sysmon `{GUID}`, EDR opaque string |
-| `ProcessId` | `process.pid` | `process.pid` | Both: `10852` |
-| `Image` | `process.executable` | `process.executable` | Both: `powershell.exe` |
-| `TargetObject` | `registry.path` | `registry.path` | Sysmon: `HKU\S-1-5-21-...\Software\Microsoft\Windows\CurrentVersion\Run\TestKey`. EDR expected equivalent |
-| `-` | `registry.hive` | `registry.hive` | ECS split from path — `HKU` |
-| `-` | `registry.key` | `registry.key` | Path without hive prefix |
-| `-` | `registry.value` | `registry.value` | Key name component — `TestKey` |
-| `User` | `user.name` + `user.domain` | `user.name` + `user.domain` | Both present. Sysmon also has `winlog.user.identifier` (SYSTEM SID) and `user.id` |
-| `-` | `-` | `process.code_signature.*` | EDR only — signing status of the process touching the registry |
-| `-` | `-` | `process.parent.pid` | EDR only |
-| `-` | `-` | `process.thread.id` | EDR only |
-| `-` | `winlog.record_id` | `-` | Sysmon only — Windows event log sequence number |
-| `-` | `winlog.process.pid` / `winlog.process.thread.id` | `-` | Sysmon only — Sysmon service process context |
+| `RuleName` | `rule.name` | `-` |  |
+| `EventType` | `winlog.event_data.EventType` | `-` | Sysmon: `DeleteKey` / `CreateKey`. EDR does not capture key creation or deletion |
+| `UtcTime` | `@timestamp` | `-` | |
+| `ProcessGuid` | `process.entity_id` | `-` | |
+| `ProcessId` | `process.pid` | `-` | |
+| `Image` | `process.executable` | `-` | |
+| `TargetObject` | `registry.path` | `-` | |
+| `-` | `registry.hive` | `-` | |
+| `-` | `registry.key` | `-` | |
+| `-` | `registry.value` | `-` | |
+| `User` | `user.name` + `user.domain` | `-` | |
+| `-` | `user.id` | `-` | Sysmon: `S-1-5-18` (SYSTEM context) |
+
+### Analysis
+EID 12 (CreateKey / DeleteKey) is a complete EDR gap. Elastic Defend registry collection only captures modification and query actions with and would need special configuration in Advanced settings to produce telemetry for this.
+
+
+## EID 13 RegistryEvent (Value Set)
+EID 13 fires when a registry value is written via NtSetValueKey. EDR detects through `endpoint.events.registry`and action `modification`.
+
+### Event Generation
+```Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "Malware" -Value "C:\Temp\malicious.exe"```
+
+### Field Comparision
+| Sysmon Rule Field | Sysmon Log Field | Elastic Defend Field | Comment |
+|---|---|---|---|
+| `RuleName` | `rule.name` | `-` | EDR has no rule tagging on raw events |
+| `EventType` | `winlog.event_data.EventType` | `-` | Sysmon: `SetValue`. EDR uses `event.action: modification` instead |
+| `UtcTime` | `@timestamp` | `@timestamp` | |
+| `ProcessGuid` | `process.entity_id` | `process.entity_id` | Different formats Sysmon `{GUID}`, EDR opaque string |
+| `ProcessId` | `process.pid` | `process.pid` | |
+| `Image` | `process.executable` | `process.executable` | |
+| `TargetObject` | `registry.path` | `registry.path` | Sysmon: `HKU\S-1-5-21-...\...\Run\Malware`. EDR: `HKEY_USERS\S-1-5-21-...\...\Run\Malware` different hive prefix format |
+| `-` | `registry.hive` | `registry.hive` | Sysmon: `HKU`. EDR: `HKEY_USERS` same hive, different abbreviation |
+| `-` | `registry.key` | `registry.key` | Sysmon key includes value name: `...\Run\Malware`. EDR key stops at parent: `...\Run` EDR correctly separates key from value |
+| `-` | `registry.value` | `registry.value` | Both same |
+| `Details` | `registry.data.strings` | `registry.data.strings` | Both same |
+| `-` | `registry.data.type` | `registry.data.type` | Both same |
+| `User` | `user.name` + `user.domain` | `user.name` + `user.domain` | Both present. Sysmon `user.id`: `S-1-5-18` (SYSTEM context). EDR `user.id`: `S-1-5-21-...` (actual user SID — more accurate) |
+| `-` | `-` | `process.code_signature.*` | EDR only signing status of the writing process (`Microsoft Windows`, trusted) |
+| `-` | `-` | `process.Ext.code_signature.*` | EDR only extended signature with thumbprint |
+| `-` | `winlog.record_id` | `-` | Sysmon only |
+| `-` | `winlog.process.pid` / `winlog.process.thread.id` | `-` | Sysmon only Sysmon service process context |
+
+### Analysis
+The core values are same and present in both. Some changes on the key/value format. EDR advantage is `process.code_signature.*` where for example an unsigned binary writing to a Run key with `code_signature.exists: false` is suspicious.
+
+
+## EID 14 RegistryEvent (Key and Value Rename)
+EID 14 fires when a registry key or value is renamed via NtRenameKey. EDR would need changes to the Advanced Settings to capture this telemetry
+
+### Event Generation
+```
+reg add "HKCU\Software\TestKey" /f
+Had to use regedit.exe to manual edit name to trigger the event
+```
+
+### Field Comparision
+| Sysmon Rule Field | Sysmon Log Field | Elastic Defend Field | Comment |
+|---|---|---|---|
+| `RuleName` | `rule.name` | `-` | |
+| `EventType` | `winlog.event_data.EventType` | `-` | Sysmon: `RenameKey`. No EDR equivalent |
+| `UtcTime` | `@timestamp` | `-` | |
+| `ProcessGuid` | `process.entity_id` | `-` | |
+| `ProcessId` | `process.pid` | `-` | |
+| `Image` | `process.executable` | `-` | Sysmon: `regedit.exe` confirmed only via regedit, not PowerShell `Rename-Item` |
+| `TargetObject` | `registry.path` | `-` | |
+| `-` | `registry.hive` | `-` | |
+| `-` | `registry.key` | `-` | |
+| `-` | `registry.value` | `-` | |
+| `NewName` | `winlog.event_data.NewName` | `-` | Sysmon: `HKU\S-1-5-21-...\Software\TestKeyssss` the post rename full path |
+| `User` | `user.name` + `user.domain` | `-` | |
+| `-` | `user.id` | `-` | Sysmon: `S-1-5-18` (SYSTEM context) |
+| `-` | `winlog.record_id` | `-` | Sysmon only |
+
+
+
+
+
+
+
+
+
+
+
 
 
 ## Elastic EDR Advanced Settings
