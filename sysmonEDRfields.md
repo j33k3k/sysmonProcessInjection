@@ -280,3 +280,155 @@ Compile and run t1_classic_crt.cpp
 
 ### Analysis
 Sysmon gives one summarized event at the CreateRemoteThread call. EDR takes a different approach and hooks the ETWTI (ETW Threat Intelligence) provider level and captures every individual API call in the injection chain as a separate events, giving VirtualAllocEx → WriteProcessMemory → CreateRemoteThread as a sequence. EDR captures richer context about the process injection while Sysmon tracks the `NewThreadId` field which could be used for correlating subsequent thread activity.
+
+
+## EID 9 RawAccessRead
+EID 9 fires when a process reads directly from a physical disk or volume using raw device paths like `\\.\PhysicalDrive0` or `\\.\C:`, bypassing the normal filesystem stack that it would normally deny access to. Often to read locked files like NTDS.dit, SAM, SYSTEM hives, and MFT. 
+
+### Event Generation
+```
+Updated Sysmon conf with <Device condition="contains">\</Device> in Includes
+Then in Powershell dir "\\.\C:" 2>$null
+```
+
+### Field Comparision
+| Sysmon Rule Field | Sysmon Log Field | Elastic Defend Field | Comment |
+|---|---|---|---|
+| `RuleName` | `rule.name` | `-` |  No equivalent in EDR |
+| `UtcTime` | `@timestamp` | `-` | EDR generates no event for this activity |
+| `ProcessGuid` | `process.entity_id` | `-` | EDR generates no event for this activity |
+| `ProcessId` | `process.pid` | `-` | EDR generates no event for this activity |
+| `Image` | `process.executable` | `-` | EDR generates no event for this activity |
+| `Device` | `file.path` | `-` | EDR generates no event for this activity |
+| `User` | `user.name` | `-` | EDR generates no event for this activity |
+
+### Analysis
+Confirmed telemetry gap in Elastic Defend. Raw disk reads via device paths (\\.\C:, \Device\HarddiskVolume4 etc) but generated zero events in any EDR dataset.
+
+
+## EID 10 ProcessAccess
+EID 10 fires when a process opens a handle to another process using OpenProcess in kernell32.dll or NtOpenProcess in ntdll.dll to bypass usermode. The key fields are GrantedAccess (the access mask requested) and CallTrace.
+
+### Event Generation
+```
+Compile and run t1_classic_crt.cpp
+```
+
+### Field Comparision
+| Sysmon Rule Field | Sysmon Log Field | Elastic Defend Field | Comment |
+|---|---|---|---|
+| `RuleName` | `rule.name` | `-` | No equivalent in EDR |
+| `UtcTime` | `@timestamp` | `@timestamp` | |
+| `SourceProcessGUID` | `process.entity_id` | `process.entity_id` | Source (accessing) process. Different format: Sysmon uses `{GUID}`, Elastic uses opaque string |
+| `SourceProcessId` | `process.pid` | `process.pid` | |
+| `SourceThreadId` | `process.thread.id` | `process.thread.id` | thread making the `OpenProcess` call |
+| `SourceImage` | `process.executable` | `process.executable` | |
+| `SourceUser` | `winlog.event_data.SourceUser` | `user.name` | |
+| `TargetProcessGUID` | `winlog.event_data.TargetProcessGUID` | `Target.process.entity_id` | EDR uses dedicated `Target.*` namespace |
+| `TargetProcessId` | `winlog.event_data.TargetProcessId` | `Target.process.pid` | |
+| `TargetImage` | `winlog.event_data.TargetImage` | `Target.process.executable` | |
+| `TargetUser` | `winlog.event_data.TargetUser` | `-` | Not present in EDR api events |
+| `GrantedAccess` | `winlog.event_data.GrantedAccess` | `-` | No access mask field in EDR |
+| `CallTrace` | `winlog.event_data.CallTrace` | `-` | No call stack in EDR |
+| `-` | `-` | `process.Ext.api.name` | EDR only `WriteProcessMemory` captures subsequent API calls in the injection chain |
+| `-` | `-` | `process.Ext.api.summary` | EDR only `WriteProcessMemory( Notepad.exe, Unbacked, 0x1f8 )` human readable injection summary |
+| `-` | `-` | `process.Ext.api.behaviors` | EDR only `cross-process`, `image_indirect_call` behavioral classification |
+| `-` | `-` | `process.Ext.api.metadata.target_address_name` | EDR only `Unbacked` data written to unbacked memory region |
+| `-` | `-` | `process.Ext.api.parameters.address` | EDR only target memory address of the write |
+| `-` | `-`| `process.Ext.api.parameters.size` | EDR only bytes written |
+| `-` | `-` | `process.code_signature.exists` | EDR only `false` accessing process is unsigned |
+| `-` | `-` | `Target.process.Ext.created_suspended` | EDR only `true` on target process |
+| `-` | `-` | `Target.process.Ext.token.integrity_level_name` | EDR only integrity level of target process |
+| `-` | `-` | `process.parent.executable` | EDR only `cmd.exe` full parent context of the accessing process |
+| `-` | `-` | `event.provider` | EDR only `Microsoft-Windows-Threat-Intelligence` ETWTI kernel telemetry source |
+
+**Fields available in EDR Behaviour alerts::**
+| Elastic Defend Field | Alert 1 (shellcode_thread) | Alert 2 (Suspended Process Injection) | Alert 3 (Remote Code Injection) | Comment |
+|---|---|---|---|---|
+| `event.code` | `shellcode_thread` | `behavior` | `behavior` | Alert type classifier |
+| `event.action` | `start` | `rule_detection` | `rule_detection` | |
+| `event.category` | `malware`, `intrusion_detection` | `malware`, `intrusion_detection` | `malware`, `intrusion_detection` | |
+| `event.type` | `info`, `denied` | `info`, `denied` | `info`, `denied` | `denied` = prevented |
+| `event.outcome` | `success` | `success` | `success` | Prevention succeeded |
+| `event.severity` | `73` | `99` | `73` | Maps to high/critical/high |
+| `kibana.alert.severity` | `high` | `critical` | `high` | |
+| `kibana.alert.rule.name` | `Memory Threat Prevention Alert: Shellcode Injection` | `Malicious Behavior Prevention Alert: Potential Suspended Process Code Injection` | `Malicious Behavior Prevention Alert: Potential Remote Code Injection` | |
+| `kibana.alert.reason` | Human readable summary | Human readable summary | Human readable summary | |
+| `kibana.alert.rule.threat` | T1055, T1620 | T1055 | T1055 | MITRE ATT&CK mapping |
+| `rule.name` | `-` | `Potential Suspended Process Code Injection` | `Potential Remote Code Injection` | Internal Elastic behavioral rule name |
+| `rule.description` | `-` | `Identifies attempts to write to the address space of a remote process that was started in a suspended state...` | `Identifies attempt to allocate an executable memory region in a remote process followed by writing content to it...` | |
+| `rule.ruleset` | `production` | `production` | `production` | |
+| `Memory_protection.feature` | `shellcode_thread` | `-` | `-` | Only on shellcode_thread alerts |
+| `Memory_protection.self_injection` | `true` | `-` | `-` | `false` = remote injection |
+| `Memory_protection.unique_key_v1` | present | `-` | `-` | Deduplication/clustering key |
+| `Memory_protection.cross_session` | `false` | `-` | `-` | Cross-session injection indicator |
+| `Memory_protection.parent_to_child` | `false` | `-` | `-` | Parent-to-child injection indicator |
+| `process.executable` | `svchost.exe` | `elastic-agent-9.3.2-windows-x86_64.exe` | `elastic-agent-9.3.2-windows-x86_64.exe` | Injecting process |
+| `process.pid` | `3100` | `27400` | `18400` | |
+| `process.entity_id` | present | present | present | |
+| `process.command_line` | present | present | present | |
+| `process.hash.sha256` | present | present | present | |
+| `process.pe.imphash` | `-` | `-` | `a7699f9ee3ea2fd5d8a19510b0ebfa15` | |
+| `process.exit_code` | `-` | `-` | `1` | Non-zero = abnormal exit |
+| `process.code_signature.exists` | `-` | `false` | `false` | Unsigned injecting binary — high signal |
+| `process.code_signature.status` | `-` | `""` | `""` | Empty = no signature |
+| `process.parent.executable` | `services.exe` | `cmd.exe` | `cmd.exe` | |
+| `process.thread.id` | `4724` | `4208` | `19272` | Thread performing injection |
+| `process.thread.Ext.start_address` | `2361273606784` | `-` | `-` | Only on shellcode_thread |
+| `process.thread.Ext.start_address_module` | `Unbacked` | `-` | `-` | Confirms shellcode thread start |
+| `process.thread.Ext.start_address_bytes` | `40534883ec20...` | `-` | `-` | Raw bytes — usable for YARA/vGrep hunting |
+| `process.thread.Ext.start_address_bytes_disasm` | `push rbx; sub rsp, 0x20...` | `-` | `-` | Disassembly of shellcode entry point |
+| `process.thread.Ext.call_stack_summary` | `ntdll.dll` | `ntdll.dll\|kernelbase.dll\|elastic-agent...\|kernel32.dll\|ntdll.dll` | `ntdll.dll\|kernelbase.dll\|elastic-agent...\|kernel32.dll\|ntdll.dll` | Compact call stack |
+| `process.thread.Ext.call_stack[].symbol_info` | `ntdll.dll!NtCreateThreadEx+0x14`, `kernelbase.dll!CreateRemoteThreadEx+0x29f`, `Unbacked!0x...` (multiple) | `ntdll.dll!NtWriteVirtualMemory+0x14`, `kernelbase.dll!WriteProcessMemory+0xde`, `elastic-agent...+0x4a862` | `ntdll.dll!NtAllocateVirtualMemory+0x14`, `kernelbase.dll!VirtualAllocEx+0x43`, `elastic-agent...+0x4a862` | Full resolved call stack per frame |
+| `process.thread.Ext.call_stack[].module_path` | `ntdll.dll`, `kernelbase.dll`, `kernel32.dll`, `Unbacked` (multiple) | present | present | `Unbacked` frames = shellcode |
+| `process.thread.Ext.call_stack[].memory_section.protection` | `R-X`, `RWX` | present | present | `RWX` = shellcode memory |
+| `process.thread.Ext.call_stack_final_user_module.name` | `-` | `elastic-agent-9.3.2-windows-x86_64.exe` | `elastic-agent-9.3.2-windows-x86_64.exe` | Last non-system module — identifies injector |
+| `process.thread.Ext.call_stack_final_user_module.path` | `-` | `c:\programdata\elastic-agent...` | `c:\programdata\elastic-agent...` | |
+| `process.thread.Ext.call_stack_final_user_module.hash.sha256` | `-` | present | present | Hash of injecting binary |
+| `process.thread.Ext.call_stack_final_user_module.code_signature.exists` | `-` | `false` | `false` | |
+| `process.thread.Ext.call_stack[].callsite_leading_bytes` | `-` | present | present | Bytes before call instruction |
+| `process.thread.Ext.call_stack[].callsite_trailing_bytes` | `-` | present | present | Bytes after call instruction — useful for YARA |
+| `process.Ext.api.name` | `-` | `WriteProcessMemory` | `VirtualAllocEx` | API call that triggered detection |
+| `process.Ext.api.summary` | `-` | `WriteProcessMemory( svchost.exe, Unbacked, 0xbc000 )` | `VirtualAllocEx( svchost.exe, NULL, 0xbc000, COMMIT\|RESERVE, RWX )` | Human readable API call summary |
+| `process.Ext.api.behaviors` | `-` | `cross-process`, `image_indirect_call` | `cross-process`, `image_indirect_call` | Behavioral classification of the API call |
+| `process.Ext.api.metadata.target_address_name` | `-` | `Unbacked` | `Unbacked` | Target memory region not backed by a file |
+| `process.Ext.api.parameters.address` | `-` | present | present | Target memory address |
+| `process.Ext.api.parameters.size` | `-` | `770048` | `770048` | Size of allocation/write |
+| `process.Ext.api.parameters.protection` | `-` | `-` | `RWX` | Memory protection flags on allocation |
+| `process.Ext.api.parameters.allocation_type` | `-` | `-` | `COMMIT\|RESERVE` | |
+| `process.Ext.token.integrity_level_name` | `system` | `high` | `high` | Integrity level of injecting process |
+| `process.Ext.code_signature` | trusted (svchost) | `exists: false` | `exists: false` | |
+| `process.Ext.ancestry` | present | `-` | `-` | Full process chain |
+| `process.Ext.dll.*` | full DLL list | `-` | `-` | Loaded modules — useful for DLL side-loading analysis |
+| `Target.process.executable` | `svchost.exe` | `svchost.exe` | `svchost.exe` | Target (injected) process |
+| `Target.process.pid` | `3100` | `28572` | `14808` | |
+| `Target.process.entity_id` | present | present | present | |
+| `Target.process.Ext.created_suspended` | `true` | `true` | `true` | Process was created suspended — classic hollow/doppelgang precursor |
+| `Target.process.Ext.token.integrity_level_name` | `system` | `high` | `high` | |
+| `Target.process.Ext.memory_region.region_protection` | `RWX` | `RWX` | `RWX` | Memory region is executable — shellcode indicator |
+| `Target.process.Ext.memory_region.allocation_type` | `PRIVATE` | `PRIVATE` | `PRIVATE` | Not file-backed |
+| `Target.process.Ext.memory_region.allocation_protection` | `RWX` | `RWX` | `RWX` | |
+| `Target.process.Ext.memory_region.memory_pe_detected` | `true` | `true` | `true` | PE structure detected in injected memory |
+| `Target.process.Ext.memory_region.memory_pe.imphash` | `7730ae4afeef9e61ef5f5446791afdff` | `7730ae4afeef9e61ef5f5446791afdff` | `7730ae4afeef9e61ef5f5446791afdff` | Same imphash across all three — same payload |
+| `Target.process.Ext.memory_region.hash.sha256` | `-` | present | present | Hash of injected content |
+| `Target.process.Ext.memory_region.region_size` | `311296` | `770048` | `770048` | |
+| `Target.process.Ext.memory_region.allocation_size` | `786432` | `770048` | `770048` | |
+| `Target.process.Ext.memory_region.strings` | extensive list | extensive list | extensive list | Strings extracted from injected memory — highest value for threat intel and IOC extraction |
+| `Target.process.Ext.memory_region.bytes_address` | present | present | present | Base address of injected region |
+| `Target.process.Ext.memory_region.region_state` | `COMMIT` | `COMMIT` | `COMMIT` | |
+| `Target.process.Ext.dll.*` | full DLL list | `-` | `-` | Loaded modules in target process |
+| `Target.process.thread.Ext.start_address_module` | `Unbacked` | `-` | `-` | |
+| `Target.process.thread.Ext.start_address_bytes` | present | `-` | `-` | |
+| `Target.process.thread.Ext.start_address_bytes_disasm` | present | `-` | `-` | |
+| `Target.process.thread.Ext.call_stack_summary` | `ntdll.dll` | `-` | `-` | |
+| `Events[]` | `-` | `VirtualAllocEx` + `WriteProcessMemory` events | `VirtualAllocEx` + `WriteProcessMemory` events | Bundled contributing API events with full context |
+| `Events[]._label` | `-` | `api_writeprocmem_suspended_target` | `remote_memory_alloc`, `remote_memory_write` | Semantic label per contributing event |
+| `Responses[].action.action` | `kill_process` | `kill_process` (x2) | `kill_process` | Automated response taken |
+| `Responses[].process.name` | `svchost.exe` | injector + target | injector only | Which processes were killed |
+| `Responses[].result` | `0` (success) | `0` (success) | `0` (success) | |
+| `Endpoint.policy.applied.name` | present | present | present | Policy that triggered prevention |
+| `kibana.alert.workflow_status` | `closed` | `closed` | `closed` | |
+| `kibana.alert.workflow_reason` | `benign_positive` | `true_positive` | `false_positive` | Analyst verdict |
+
+### Analysis
+The two most critical gaps in EDR for EID 10 are GrantedAccess and CallTrace where both are absent from endpoint.events.api and instead replaced with other `process.Ext.api.*` fields. However, this is just the raw events without any EDR behaviour module enabled which provides richer and more contextual alert fields, see example above.
