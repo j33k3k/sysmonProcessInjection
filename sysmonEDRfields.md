@@ -788,7 +788,7 @@ Sysmon EID 24 fires when the system clipboard content changes.
 | `ProcessGuid` | `process.entity_id` | `-` | |
 | `ProcessId` | `process.pid` | `-` | |
 | `Image` | `process.executable` | `-` | |
-| `Session` | `winlog.event_data.Session` | `-` | Sysmon only Windows session ID, useful for RDP attribution |
+| `Session` | `winlog.event_data.Session` | `-` | Sysmon only Windows session ID |
 | `ClientInfo` | `winlog.event_data.ClientInfo` | `-` | Sysmon only user context string |
 | `Hashes` | `process.hash.sha1` / `.md5` / `.sha256` | `-` | Sysmon only hashes of the process that modified clipboard |
 | `Archived` | `sysmon.file.archived` | `-` | Sysmon only clipboard content dumped to archive when `<CaptureClipboard />` enabled |
@@ -796,10 +796,40 @@ Sysmon EID 24 fires when the system clipboard content changes.
 | `-` | `winlog.record_id` | `-` | Sysmon only |
 
 ### Analysis
-EID 24 is Sysmon-only Elastic Defend has no clipboard monitoring capability. 
+EID 24 is Sysmon only, Elastic Defend has no clipboard monitoring capability. 
 
 
+### EID 25
+Fires when a process image is tampered with using techniques that manipulate how the OS loads or maps a process and can detect attacks such as Process Hollowing.
+Sysmon detects these by monitoring for discrepancies between the mapped image in memory and what's on disk. EDR does have some coverage here via memory threat detection (memory_region events and shellcode_thread alerts) and behavioral detection.
 
+### Event Generation
+``` Compile and run t4_process_hollowing.cpp ```
+
+### Field Comparison
+
+| Sysmon Rule Field | Sysmon Log Field | Elastic Defend Field | Comment |
+|---|---|---|---|
+| `RuleName` | `winlog.task` | `-` | EDR has no rule tagging |
+| `UtcTime` | `@timestamp` | `@timestamp` | |
+| `ProcessGuid` | `process.entity_id` | `Target.process.entity_id` | Sysmon reports target process. EDR `process.entity_id` is the attacker; `Target.process.entity_id` is the victim different formats |
+| `ProcessId` | `process.pid`: `8104` | `Target.process.pid`: `8104` | Sysmon `process.pid` = target. EDR `process.pid` = attacker, Correlation pivot: Sysmon `process.pid` ↔ EDR `Target.process.pid` |
+| `Image` | `process.executable` | `Target.process.executable` | Sysmon reports target (Notepad.exe). EDR `process.executable` is the attacker binary |
+| `Type` | `winlog.event_data.Type`: `Image is replaced` | `-` | **Sysmon only** explicit tamper type classification |
+| `User` | `user.name` + `user.domain` | `user.name` + `user.domain` | Sysmon `user.id`: `S-1-5-18` (driver context). EDR `user.id`: actual user SID |
+| `-` | `-` | `process.executable`: `t4_process_hollowing.exe` | EDR only identifies the attacker process; Sysmon has no equivalent |
+| `-` | `-` | `process.parent.executable`: `cmd.exe` | EDR only |
+| `-` | `-` | `process.code_signature.exists`: `false` | EDR only attacker binary unsigned |
+| `-` | `-` | `Target.process.Ext.created_suspended`: `true` | EDR only confirms process started suspended, key hollow indicator |
+| `-` | `-` | `Target.process.Ext.token.integrity_level_name` | EDR only |
+| `-` | `-` | `process.Ext.api.name`: `SetThreadContext` | EDR only exact API call intercepted via ETW-TI |
+| `-` | `-` | `process.Ext.api.summary` | EDR only full call summary with register state |
+| `-` | `-` | `process.Ext.api.behaviors` | EDR only `execute_shellcode`, `cross-process`, `parent-child` |
+| `-` | `-` | `process.Ext.api.metadata.target_address_name`: `Unbacked` | EDR only RCX points to unbacked memory, strong shellcode indicator |
+| `-` | `-` | `process.Ext.api.parameters.*` | EDR only full register snapshot at time of call |
+
+### Analysis
+Sysmon capture less details about the event wit
 
 
 
