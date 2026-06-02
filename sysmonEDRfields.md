@@ -728,15 +728,75 @@ EID 22 fires on every DNS query made by any process. Sysmon hooks the DNS client
 | `-` | `winlog.record_id` | `-` | Sysmon only |
 
 ### Analysis
-Both sensors cover DNS query telemetry well with no critical gaps on either side. Two differences worth noting for rule writing. The dns.resolved_ip format differs Sysmon returns plain IPv4 (66.96.146.129) while EDR returns IPv4-mapped IPv6 notation (::ffff:66.96.146.129). Also a change in timestamp but would need more testing to confirm if they detect at different layers.
+Both cover DNS query telemetry well with no critical gaps on either side. The dns.resolved_ip format differs where Sysmon returns plain IPv4 (66.96.146.129) while EDR returns IPv4-mapped IPv6 notation (::ffff:66.96.146.129). Also a change in timestamp but would need more testing to confirm if they detect at different layers.
 
 
+## EID 23 FileDelete
+EID 23 fires when a file is deleted. Sysmon optionally archives a copy of the deleted file to C:\Sysmon\ before deletion for further analysis.
+
+### Event Generation
+```
+New-Item "C:\Temp\malicious.exe" -ItemType File -Force
+Remove-Item "C:\Temp\malicious.exe" -Force
+```
+
+### Field Comparision
+## EID 23 – FileDelete (File Delete Archived)
+
+### Field Comparison
+
+| Sysmon Rule Field | Sysmon Log Field | Elastic Defend Field | Comment |
+|---|---|---|---|
+| `RuleName` | `winlog.task` | `-` | EDR has no rule tagging |
+| `UtcTime` | `@timestamp` | `@timestamp` | |
+| `ProcessGuid` | `process.entity_id` | `process.entity_id` | Different formats: Sysmon `{GUID}`, EDR opaque string |
+| `ProcessId` | `process.pid` | `process.pid` | |
+| `Image` | `process.executable` | `process.executable` | |
+| `TargetFilename` | `file.path` | `file.path` | |
+| `-` | `file.name` | `file.name` | |
+| `-` | `file.extension` | `file.extension` | |
+| `-` | `file.directory` | `-` | Sysmon ECS enrichment only |
+| `Hashes` | `process.hash.sha1` / `.md5` / `.sha256` | `-` | **Critical EDR gap** Sysmon archives a copy of the file and records full hashes before deletion; EDR captures nothing |
+| `IsExecutable` | `sysmon.file.is_executable` | `-` | **EDR gap** Sysmon reads PE header to confirm executable status regardless of extension |
+| `Archived` | `sysmon.file.archived` | `-` | **EDR gap** EID 23 = archived delete (copy preserved); EID 26 = non-archived delete; EDR uses generic `deletion` for both |
+| `User` | `user.name` + `user.domain` | `user.name` + `user.domain` | Sysmon `user.id`: `S-1-5-18` (driver/SYSTEM context). EDR `user.id`: actual user SID |
+| `-` | `-` | `file.Ext.entropy` | EDR only `0` when file already deleted at capture time |
+| `-` | `-` | `file.Ext.header_data` | EDR only empty `[]` when file already deleted |
+| `-` | `-` | `file.size`: `-1` | EDR only `-1` indicates file gone when sampled |
+| `-` | `-` | `process.code_signature.*` | EDR only |
+| `-` | `-` | `process.Ext.code_signature.*` | EDR only |
+| `-` | `-` | `process.parent.pid` | EDR only |
+| `-` | `winlog.record_id` | `-` | Sysmon only |
 
 
+### Analysis
+The critical gap is hashes where Sysmon archives a copy of the deleted file and records SHA1/MD5/SHA256. EDR adds process code signatures and parent PID fields.
 
 
+## EID 24 ClipboardChange
+Sysmon EID 24 fires when the system clipboard content changes.
 
+### Event Generation
+``` EID 24 is by default disabled, add this rule to config <Image condition="is not">dummy</Image> ```
 
+### Field Comparison
+
+| Sysmon Rule Field | Sysmon Log Field | Elastic Defend Field | Comment |
+|---|---|---|---|
+| `RuleName` | `winlog.task` | `-` | |
+| `UtcTime` | `@timestamp` | `-` | |
+| `ProcessGuid` | `process.entity_id` | `-` | |
+| `ProcessId` | `process.pid` | `-` | |
+| `Image` | `process.executable` | `-` | |
+| `Session` | `winlog.event_data.Session` | `-` | Sysmon only Windows session ID, useful for RDP attribution |
+| `ClientInfo` | `winlog.event_data.ClientInfo` | `-` | Sysmon only user context string |
+| `Hashes` | `process.hash.sha1` / `.md5` / `.sha256` | `-` | Sysmon only hashes of the process that modified clipboard |
+| `Archived` | `sysmon.file.archived` | `-` | Sysmon only clipboard content dumped to archive when `<CaptureClipboard />` enabled |
+| `User` | `user.name` + `user.domain` | `-` | Sysmon `user.id`: `S-1-5-18` (driver context). Actual user in `winlog.event_data.ClientInfo` |
+| `-` | `winlog.record_id` | `-` | Sysmon only |
+
+### Analysis
+EID 24 is Sysmon-only Elastic Defend has no clipboard monitoring capability. 
 
 
 
