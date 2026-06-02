@@ -1,7 +1,8 @@
 # Comparision of Sysmon and Elastic Defend fields
 
 ## Sysmon Config discoveries
-- In the config there needs to be a explicit rule included for the include/exclude RuleGroups to trigger, had missed on the include and did not trigger any eid 6
+- In the config there needs to be a explicit rule included for the include/exclude RuleGroups to trigger and its not enough with an empty tag
+- Seem to be mutual exclusive so first rule to trigger will generate its event, can be a bit tricky with different file deletes 
 
 ## EID 1 Process Create
 Every CreateProcess call generates EID 1. Sysmon hooks this via kernel process-creation callbacks registered through PsSetCreateProcessNotifyRoutineEx. Elastic Defend generates process events with event.action: start via its kernel-mode driver (ElasticEndpoint.sys), capturing equivalent telemetry through ETW and kernel callbacks.
