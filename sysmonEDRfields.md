@@ -829,7 +829,77 @@ Sysmon detects these by monitoring for discrepancies between the mapped image in
 | `-` | `-` | `process.Ext.api.parameters.*` | EDR only full register snapshot at time of call |
 
 ### Analysis
-Sysmon capture less details about the event wit
+Sysmon capture less details about the event and it only sees the victim process. For EDR it provides the full API-level mechanics and process context.
+
+
+## EID 26 FileDeleteDetected - SKIPPED
+Fires when a file is deleted but without archiving, the file is not preserved, only the deletion is logged. EID 23 and 26 are mutually exclusive so whichever rule matches first wins and will log the event.
+
+
+## EID 27 FileBlockExecutable
+Fires when Sysmon blocks a file from being created when it detects the content is a PE (executable). Requires Sysmon to be configured with a FileBlockExecutable rule which will be an active prevention capability, not just logging. 
+
+### Event Generation
+```
+Is disabled by default, add this to conf  <TargetFilename condition="contains">\Downloads\test.exe</TargetFilename>
+Then copy calc.exe as test.exe and run it
+```
+
+### Field Comparison
+| Sysmon Rule Field | Sysmon Log Field | Elastic Defend Field | Comment |
+|---|---|---|---|
+| `RuleName` | `winlog.task` | `-` | |
+| `UtcTime` | `@timestamp` | `-` | |
+| `ProcessGuid` | `process.entity_id` | `-` | |
+| `ProcessId` | `process.pid` | `-` | |
+| `Image` | `process.executable` | `-` | |
+| `TargetFilename` | `file.path` | `-` | |
+| `-` | `file.name` | `-` | |
+| `-` | `file.extension` | `-` | |
+| `-` | `file.directory` | `-` | |
+| `Hashes` | `process.hash.sha1` / `.md5` / `.sha256` | `-` | Sysmon only hashes of the blocked file |
+| `User` | `user.name` + `user.domain` | `-` | |
+
+### Analysis
+EID 27 is Sysmon-only as a prevention capability. Sysmon actively blocks the file write at the kernel level based on PE header detection, logs the attempt with full hashes, and marks it `event.outcome: failure`. Elastic Defend has no equivalent file-write blocking mechanism, it can however block execution after the fact via hash/path blocklists, but the file reaches disk first. For dropper prevention on sensitive paths, Sysmon EID 27 is the stronger control.
+
+
+## EID 28 FileBlockShredding - SKIPPED
+Fires when Sysmon blocks a tool from overwriting/shredding a file with the intent to make recovery impossible. Could not manage to trigger the event with either sdelete or cipher.
+
+
+## EID 29 FileExecutableDetected
+Fires when a file with a PE (executable) header is detected being created, unlike EID 27 which blocks it, EID 29 is detection-only and logs it without preventing the write. 
+
+### Event Generation
+```Run a .exe from Downloads folder```
+
+### Field Comparison
+
+| Sysmon Rule Field | Sysmon Log Field | Elastic Defend Field | Comment |
+|---|---|---|---|
+| `RuleName` | `winlog.task` | `-` | EDR has no rule tagging |
+| `UtcTime` | `@timestamp` | `@timestamp` | |
+| `ProcessGuid` | `process.entity_id` | `process.entity_id` | Different formats: Sysmon `{GUID}`, EDR opaque string |
+| `ProcessId` | `process.pid` | `process.pid` | |
+| `Image` | `process.executable` | `process.executable` | Both Explorer.EXE case difference only |
+| `TargetFilename` | `file.path` | `file.path` | Both same |
+| `-` | `file.name` | `file.name` | |
+| `-` | `file.extension` | `file.extension` | |
+| `-` | `file.directory` | `-` | Sysmon ECS enrichment only |
+| `Hashes` | `file.hash.sha1` / `.md5` / `.sha256` | `-` | **EDR gap** no file hashes on creation events |
+| `-` | `file.pe.imphash` | `-` | Sysmon only |
+| `User` | `user.name` + `user.domain` | `user.name` + `user.domain` | Sysmon `user.id`: `S-1-5-18` (driver context). EDR `user.id`: actual user SID |
+| `-` | `-` | `file.Ext.header_bytes`: `4d5a9000...` | EDR only raw MZ header bytes confirming PE |
+| `-` | `-` | `file.Ext.entropy`: `6.22` | EDR only useful for packed/encrypted payload detection |
+| `-` | `-` | `file.size`: `211992` | EDR only |
+| `-` | `-` | `process.code_signature.*` | EDR only |
+| `-` | `-` | `process.Ext.code_signature.*` | EDR only |
+| `-` | `-` | `process.parent.pid` | EDR only |
+| `-` | `winlog.record_id` | `-` | Sysmon only |
+
+### Analysis
+This is an extra Sysmon event for just PE creation and in EDR it would just catch it under file creation. Both detect executable drops but bring different value. Sysmon provides hashes (including IMPHASH) which EDR lacks on file creation events. EDR provides `file.Ext.header_bytes` and entropy which Sysmon lacks useful for detecting packed or obfuscated payloads regardless of extension.
 
 
 
