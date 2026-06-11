@@ -93,190 +93,119 @@ Process created or image modified
 ## Process Injection GrantedAccess Reference Table
 
 | Value | Breakdown | Technique / Context |
-
 |-------|-----------|---------------------|
-
 | **0x1FFFFF** | PROCESS_ALL_ACCESS | Lazy injectors, lab code, commodity malware |
-
-| **0x1F0FFF** | PROCESS_ALL_ACCESS (older variant) | Pre‑Win8 PROCESS_ALL_ACCESS |
-
+| **0x1F0FFF** | PROCESS_ALL_ACCESS (older variant) | Pre-Win8 PROCESS_ALL_ACCESS |
 | **0x1F1FFF** | PROCESS_ALL_ACCESS variant | Seen in some C2 frameworks |
-
 | **0x1F2FFF** | PROCESS_ALL_ACCESS variant | Seen in some C2 frameworks |
-
 | **0x1F3FFF** | PROCESS_ALL_ACCESS variant | Older Metasploit modules |
-
 | **0x3FFF** | High access mask | Broad injection, hollowing, hijacking |
 
 ---
 
-## 🔹 **Core Injection Triad (VM_WRITE + VM_OPERATION + CREATE_THREAD)**
+## Core Injection Triad (VM_WRITE + VM_OPERATION + CREATE_THREAD)
 
 | Value | Breakdown | Technique / Context |
-
 |-------|-----------|---------------------|
-
 | **0x143A** | VM_WRITE + VM_OP + CREATE_THREAD + QUERY | Classic CRT injection minimum |
-
 | **0x147A** | VM_WRITE + VM_OP + CREATE_THREAD + DUP + QUERY + SUSPEND | Full injection with suspend capability |
-
 | **0x047A** | VM_WRITE + VM_OP + CREATE_THREAD + DUP | Injection with handle duplication |
-
 | **0x042A** | VM_WRITE + VM_OP + CREATE_THREAD + QUERY_INFORMATION | Minimum requested before kernel substitutes |
-
 | **0x042B** | VM_WRITE + VM_OP + CREATE_THREAD + DUP + QUERY_INFORMATION | Injection with handle dup (QUERY variant) |
-
 | **0x102A** | VM_WRITE + VM_OP + CREATE_THREAD + QUERY_LIMITED | T6 DLL injection, lab observed |
-
 | **0x142A** | VM_WRITE + VM_OP + CREATE_THREAD + QUERY + QUERY_LIMITED | Direct syscall injection (lab observed) |
-
 | **0x103A** | VM_WRITE + VM_OP + VM_READ + CREATE_THREAD + QUERY_LIMITED | Full minimal inject (QUERY_LIMITED) |
-
 | **0x1C2A** | VM_WRITE + VM_OP + CREATE_THREAD + SUSPEND + QUERY_LIMITED | Full hijack with thread creation |
-
 | **0x1A3A** | VM_WRITE + VM_OP + CREATE_THREAD + READ + QUERY | Mixed injection pattern |
-
 | **0x1A7A** | VM_WRITE + VM_OP + CREATE_THREAD + READ + DUP + QUERY | Extended injection with handle dup |
 
 ---
 
-## 🔹 **VM_WRITE + VM_OPERATION (no thread creation)**
+## VM_WRITE + VM_OPERATION (no thread creation)
 
 | Value | Breakdown | Technique / Context |
-
 |-------|-----------|---------------------|
-
 | **0x1410** | VM_WRITE + VM_READ + VM_OP | Memory write, no thread creation |
-
 | **0x0478** | VM_WRITE + VM_OP + DUP + QUERY | APC or thread hijack path |
-
 | **0x1438** | VM_WRITE + VM_OP + SUSPEND + QUERY | Thread hijacking injection |
-
 | **0x1028** | VM_WRITE + VM_OP + QUERY_LIMITED | Write without thread creation |
-
 | **0x1038** | VM_WRITE + VM_OP + VM_READ + QUERY_LIMITED | Memory RW without thread |
-
 | **0x1C28** | VM_WRITE + VM_OP + SUSPEND + QUERY_LIMITED | APC injection minimum |
-
 | **0x1C38** | VM_WRITE + VM_OP + SUSPEND + QUERY_LIMITED + READ | APC/hijack hybrid |
-
 | **0x1C78** | VM_WRITE + VM_OP + SUSPEND + DUP + QUERY_LIMITED | Hijack with handle dup |
 
 ---
 
-## 🔹 **VM_WRITE only / VM_OPERATION only / READ only**
+## VM_WRITE only / VM_OPERATION only / READ only
 
 | Value | Breakdown | Technique / Context |
-
 |-------|-----------|---------------------|
-
 | **0x0020** | VM_WRITE | Targeted memory patch |
-
 | **0x0008** | VM_OPERATION | VirtualProtect changes, no write |
-
 | **0x0010** | VM_READ | Memory scraping, credential theft |
 
 ---
 
-## 🔹 **Thread‑related rights**
+## Thread-related rights
+
 | Value | Breakdown | Technique / Context |
-
 |-------|-----------|---------------------|
-
-| **0x0002** | CREATE_THREAD | Thread creation in already‑written memory |
-
+| **0x0002** | CREATE_THREAD | Thread creation in already-written memory |
 | **0x0800** | SUSPEND_RESUME | Thread hijacking, context manipulation |
 
 ---
 
-## 🔹 **Handle duplication**
+## Handle duplication
+
 | Value | Breakdown | Technique / Context |
-
 |-------|-----------|---------------------|
-
 | **0x0040** | DUP_HANDLE | Handle duplication attacks |
 
 ---
 
-## 🔹 **Query‑only rights**
+## Query-only rights
+
 | Value | Breakdown | Technique / Context |
-
 |-------|-----------|---------------------|
-
 | **0x0400** | QUERY_INFORMATION | Process reconnaissance |
-
 | **0x1000** | QUERY_LIMITED_INFORMATION | Stealthy enumeration |
 
 ---
 
-## 🔹 **Query + Injection Combinations (the 16 new ones)**
-These are valid injection‑capable masks combining:
-- QUERY_INFORMATION (0x0400) 
-
-- QUERY_LIMITED_INFORMATION (0x1000) 
-
-- Injection bits 
+## Query + Injection Combinations
 
 | Value | Breakdown | Technique / Context |
-
 |-------|-----------|---------------------|
-
-| **0x0402** | QUERY + CREATE_THREAD | Minimal thread‑based injection |
-
+| **0x0402** | QUERY + CREATE_THREAD | Minimal thread-based injection |
 | **0x0408** | QUERY + VM_OPERATION | Memory protection change reconnaissance |
-
-| **0x0420** | QUERY + VM_WRITE | Write‑only injection with query |
-
-| **0x0440** | QUERY + DUP_HANDLE | Handle‑dup reconnaissance |
-
+| **0x0420** | QUERY + VM_WRITE | Write-only injection with query |
+| **0x0440** | QUERY + DUP_HANDLE | Handle-dup reconnaissance |
 | **0x0C02** | QUERY + READ + CREATE_THREAD | Thread creation after read |
-
 | **0x0C08** | QUERY + READ + VM_OPERATION | Memory read + protect change |
-
 | **0x0C20** | QUERY + READ + VM_WRITE | Memory write with read |
-
 | **0x0C40** | QUERY + READ + DUP_HANDLE | Handle dup + read |
-
 | **0x1002** | QUERY_LIMITED + CREATE_THREAD | Minimal stealth thread injection |
-
 | **0x1008** | QUERY_LIMITED + VM_OPERATION | Stealthy memory protection change |
-
 | **0x1020** | QUERY_LIMITED + VM_WRITE | Stealthy memory write |
-
 | **0x1040** | QUERY_LIMITED + DUP_HANDLE | Stealthy handle duplication |
-
 | **0x1802** | QUERY_LIMITED + READ + CREATE_THREAD | Stealthy thread injection |
-
 | **0x1808** | QUERY_LIMITED + READ + VM_OPERATION | Stealthy memory protect change |
-
 | **0x1820** | QUERY_LIMITED + READ + VM_WRITE | Stealthy memory write |
-
 | **0x1840** | QUERY_LIMITED + READ + DUP_HANDLE | Stealthy handle dup |
 
 ---
 
-## 🔹 **Other composite injection masks**
+## Other composite injection masks
 
 | Value | Breakdown | Technique / Context |
-
 |-------|-----------|---------------------|
-
 | **0x083A** | SUSPEND + VM_WRITE + VM_OP + CREATE_THREAD | Thread hijack injection |
-
 | **0x087A** | SUSPEND + VM_WRITE + VM_OP + CREATE_THREAD + DUP | Full hijack with handle dup |
-
 | **0x0C3A** | READ + VM_WRITE + VM_OP + CREATE_THREAD | Full injection with read |
-
 | **0x0C7A** | READ + VM_WRITE + VM_OP + CREATE_THREAD + SUSPEND | Hijack + read |
-
 | **0x183A** | READ + VM_WRITE + VM_OP + CREATE_THREAD + QUERY_LIMITED | Full stealth injection |
-
 | **0x187A** | READ + VM_WRITE + VM_OP + CREATE_THREAD + SUSPEND + QUERY_LIMITED | Stealth hijack |
-
 | **0x1C7A** | VM_WRITE + VM_OP + CREATE_THREAD + SUSPEND + QUERY_LIMITED | Full hijack (stealth) |
-
----
-
 ### Detection Priority
 | Priority | Values                              | Reason                               |
 |----------|-------------------------------------|--------------------------------------|
